@@ -443,6 +443,8 @@ h1, h2 { font-weight: 500; margin: 0; }
   width: 100%;
   background: #ececec;
   overflow: hidden;
+  cursor: pointer;                 /* нажатие открывает страницу фото */
+  -webkit-tap-highlight-color: transparent;
 }
 .card-shot img {
   display: block;
@@ -454,6 +456,149 @@ h1, h2 { font-weight: 500; margin: 0; }
 }
 .card-shot.is-ready img { opacity: 1; }
 .card-shot.is-ready { background: var(--paper); }
+
+/* --- Строка действий под снимком ----------------------------------------- */
+
+.acts {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 12px 2px;
+}
+
+.act {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.act svg { width: 22px; height: 22px; display: block; }
+.act-n { font-variant-numeric: tabular-nums; min-width: 8px; }
+
+/* Закрашенное сердце — единственная заливка во всём оформлении:
+   без неё не отличить «уже нравится» от «ещё нет». */
+.act-like.is-on svg path { fill: currentColor; }
+
+/* Жалоба — мелкий флажок в углу строки, а не равная соседям кнопка */
+.act-flag {
+  margin-left: auto;
+  color: var(--muted);
+}
+.act-flag svg { width: 17px; height: 17px; }
+
+/* --- Последние комментарии прямо в ленте --------------------------------- */
+
+.talk { padding: 0 12px 10px; }
+
+.talk-line {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.talk-line b { font-weight: 600; }
+
+.talk-all {
+  display: block;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Страница фото ------------------------------------------------------- */
+
+.card-solo { border-bottom: 1px solid var(--line); }
+.card-solo .card-shot { cursor: default; }
+
+.cm-list { padding: 4px 0 0; }
+
+.cm {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cm-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.cm-nick { font-weight: 600; }
+
+.cm-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cm-del {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cm-none { margin: 0; padding: 28px 16px; font-size: 14px; color: var(--muted); }
+
+/* --- Поле ввода комментария ---------------------------------------------- */
+
+.say { padding: 16px 16px 0; }
+
+.say-row { display: flex; align-items: baseline; gap: 12px; }
+
+.say-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.say-input:focus { outline: none; border-bottom-color: var(--line-strong); }
+.say-input::placeholder { color: #bbb; }
+
+.say-go {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.say-go[disabled] { color: var(--muted); cursor: default; }
+
+.say-left { margin-top: 8px; }
 
 /* Серые прямоугольники на месте ещё не пришедших карточек */
 .card.is-skeleton .card-shot { aspect-ratio: 4 / 5; }

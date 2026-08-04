@@ -238,6 +238,54 @@
     <div class="spacer"></div>
   </section>
 
+  <!-- ===== Страница фото =================================================
+       Отдельного html-файла нет и не будет: это такой же экран внутри
+       index.html, как карточка гостя. Сюда ведут значок комментариев,
+       строка «показать все N» и нажатие на сам снимок.
+  ====================================================================== -->
+  <section class="screen screen-wide" id="s-photo">
+
+    <div class="sticky">
+      <header class="topbar">
+        <button class="topbar-btn topbar-back" id="photo-back" type="button" aria-label="Назад">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <p class="topbar-title">ФОТО</p>
+        <span class="topbar-btn topbar-hole" aria-hidden="true"></span>
+      </header>
+    </div>
+
+    <article class="card card-solo">
+      <div class="card-top">
+        <button class="card-who" id="photo-who" type="button">
+          <span class="card-ava"><img id="photo-ava" src="" alt=""></span>
+          <b class="card-nick" id="photo-nick"></b>
+        </button>
+        <time class="card-time" id="photo-time"></time>
+      </div>
+      <div class="card-shot" id="photo-shot"><img id="photo-img" src="" alt=""></div>
+      <div id="photo-acts"></div>
+    </article>
+
+    <div class="cm-list" id="photo-list"></div>
+    <p class="cm-none" id="photo-none" hidden>Пока ни одного комментария</p>
+
+    <div class="say">
+      <div class="say-row">
+        <input class="say-input" id="say-input" type="text" maxlength="200"
+               autocomplete="off" autocapitalize="sentences" spellcheck="false"
+               placeholder="Написать комментарий">
+        <button class="say-go" id="say-go" type="button">Отправить</button>
+      </div>
+      <span class="err" id="err-say"></span>
+      <p class="note say-left" id="say-left">Осталось знаков: 200</p>
+    </div>
+
+    <div class="spacer"></div>
+  </section>
+
   <!-- ===== Карточка гостя ================================================ -->
   <section class="screen screen-wide" id="s-guest">
 

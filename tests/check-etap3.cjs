@@ -211,10 +211,16 @@ async function main() {
      'было ' + before + ', стало ' + after);
   await snap(page, '04-podgruzka.png');
 
-  // домотать до конца
-  for (var k = 0; k < 4; k++) {
+  /* Домотать до конца. Число снимков в базе растёт от прогона к прогону,
+     поэтому крутим не заранее назначенное число раз, а пока лента прибавляет:
+     двенадцать штук за порцию, и остановиться должна сама. */
+  var seen = -1;
+  for (var k = 0; k < 40; k++) {
+    var now = await page.$$eval('#feed .card:not(.is-skeleton)', function (n) { return n.length; });
+    if (now === seen) break;
+    seen = now;
     await page.evaluate(function () { window.scrollTo(0, document.body.scrollHeight); });
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(900);
   }
   var total = await page.$$eval('#feed .card:not(.is-skeleton)', function (n) { return n.length; });
   ok('3б. Догружается вся лента', total === allPhotos.length, 'на экране ' + total + ' из ' + allPhotos.length);

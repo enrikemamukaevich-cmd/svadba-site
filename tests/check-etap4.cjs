@@ -77,10 +77,12 @@ function seed(page) {
   }, ME);
 }
 
+// Счётчик приходит своим запросом и опережает карточки — ждём и то и другое
 function feedReady(page) {
   return page.waitForFunction(function () {
     var c = document.getElementById('feed-count');
-    return c && /Всего фото: \d+/.test(c.textContent);
+    return c && /Всего фото: \d+/.test(c.textContent) &&
+           document.querySelectorAll('#feed .card:not(.is-skeleton)').length > 0;
   }, null, { timeout: 30000 });
 }
 

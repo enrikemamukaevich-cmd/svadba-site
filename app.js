@@ -33,7 +33,12 @@ var CONFIG = {
   UP_TARGET_BYTES: 150 * 1024,
   UP_HARD_BYTES: 250 * 1024,
   UP_TRIES: 3,                     // попыток на один файл
-  UP_TIMEOUT_MS: 45000             // отправка тяжелее чтения, срок ожидания длиннее
+  UP_TIMEOUT_MS: 45000,            // отправка тяжелее чтения, срок ожидания длиннее
+
+  /* --- лайки, комментарии, жалобы --- */
+  CM_MAX: 200,                     // знаков в комментарии
+  CM_PREVIEW: 2,                   // сколько последних видно прямо в ленте
+  REPORTS_HIDE: 3                  // на какой жалобе снимок прячется (решает база)
 };
 
 var STORE_GUEST = 'svadba.guest';
@@ -205,6 +210,9 @@ function nickError(nick) {
   if (nick.length < 2) return 'Слишком короткий ник, нужно хотя бы два знака.';
   if (nick.length > 20) return 'Слишком длинный ник, не больше двадцати знаков.';
   if (!NICK_RE.test(nick)) return 'В нике можно только буквы, цифры, точку, дефис и подчёркивание.';
+  // тот же фильтр, что и у комментариев: грубый ник виден всей ленте под каждым фото
+  if (isLink(nick)) return 'Ник не должен быть похож на адрес сайта.';
+  if (isRude(nick)) return 'Так не пойдёт. Придумайте ник без грубых слов.';
   return '';
 }
 
@@ -214,6 +222,166 @@ function normWord(s) {
 
 function wordOk(s) {
   return normWord(s) === normWord(CONFIG.CODE_WORD);
+}
+
+/* --------------------------------------------------------------------------
+   Фильтр грубости и ссылок
+
+   Живёт в браузере: серверных обработчиков на хостинге нет, а ловить надо
+   до того, как грубость увидят гости. Обойти его теоретически можно —
+   это разбирается на этапе 8, здесь задача проще: не пустить обычного
+   человека, который пишет сгоряча и слегка маскирует слово.
+
+   Порядок разбора один и тот же для комментария и для никнейма:
+     1. нижний регистр;
+     2. латинские и цифровые двойники русских букв — обратно в кириллицу
+        («xyй» и «6лядь» узнаются наравне с обычным написанием);
+     3. «ё» к «е»;
+     4. вон всё, что не буква, — точки и звёздочки внутри слова больше
+        не прячут корень;
+     5. повторы букв в одну — «сууука» становится «сука».
+
+   Дальше корень ищется не где попало, а с начала слова или сразу после
+   обычной русской приставки. Без этого фильтр становится жадным и рубит
+   «стрАХОВка», «оскорБЛЯть», «хЛЕБАТь», «барСУКА». Сверх того есть короткий
+   список заведомо мирных начал слова — они не разбираются вовсе.
+   -------------------------------------------------------------------------- */
+
+// Двойники: похожие начертанием латинские буквы и цифры
+var TWINS = {
+  a: 'а', b: 'б', c: 'с', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'н', i: 'и',
+  j: 'й', k: 'к', l: 'л', m: 'м', n: 'п', o: 'о', p: 'р', q: 'я', r: 'г',
+  s: 'с', t: 'т', u: 'и', v: 'в', w: 'ш', x: 'х', y: 'у', z: 'з',
+  '0': 'о', '1': 'и', '3': 'з', '4': 'ч', '6': 'б', '9': 'я'
+};
+
+function squeeze(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[a-z0-9]/g, function (ch) { return TWINS[ch] || ch; })
+    .replace(/ё/g, 'е')
+    .replace(/[^а-я]/g, '')
+    .replace(/(.)\1+/g, '$1');
+}
+
+// Слова исходного текста, каждое приведено к тому же виду
+function words(s) {
+  return String(s || '').split(/[^0-9A-Za-zА-Яа-яЁё]+/)
+    .map(squeeze)
+    .filter(function (w) { return !!w; });
+}
+
+/* Корни. Намеренно длиннее, чем «еб» или «бля»: короткий корень ловит
+   пол-словаря даже с проверкой приставки. */
+var ROOTS = [
+  'хуй', 'хуе', 'хуя', 'хую', 'хуи',
+  'пизд', 'пезд',
+  'ебат', 'ебал', 'ебан', 'ебуч', 'ебош', 'ебуш', 'ебл', 'ебис', 'ебыр', 'ебот', 'ебыв',
+  'выеб', 'заеб', 'наеб', 'уеб', 'съеб', 'подъеб', 'объеб', 'разъеб', 'отъеб',
+  'доеб', 'приеб', 'проеб',
+  'долбое', 'долбае',
+  'бля',
+  /* Гласную выбивают звёздочкой чаще всего: «бл*ть», «п*зда», «х*й».
+     Звёздочка уже вылетела при разборе, буквы обратно не вернуть — поэтому
+     держим и обглоданные корни. Сочетаний «блт», «блд», «пзд», «хй»
+     в русских словах не бывает, ложных срабатываний они не дают. */
+  'блт', 'блд', 'пзд', 'хй',
+  'сука', 'суки', 'суке', 'суку', 'сучк', 'сучар', 'сцук',
+  'мудак', 'мудач', 'мудил', 'мудох', 'мудоз', 'мудло',
+  'гандон', 'гондон', 'залуп', 'дроч', 'шлюх', 'шлюш', 'мандав',
+  'пидор', 'пидар', 'пидр', 'пидер', 'педик',
+  'херн', 'херов', 'херач',
+  'говн', 'говен', 'жоп', 'срак', 'срал', 'сран', 'ссыкл', 'дерьм', 'курва',
+  'трахн', 'трахат', 'трахал'
+];
+
+// Обычные русские приставки. Пустая строка — корень с самого начала слова.
+var PREFIX = [
+  '', 'в', 'вз', 'вы', 'до', 'за', 'из', 'изъ', 'на', 'над', 'не', 'ни',
+  'о', 'об', 'объ', 'от', 'отъ', 'пере', 'по', 'под', 'подъ', 'пре', 'при',
+  'про', 'раз', 'разъ', 'рас', 'с', 'со', 'съ', 'у'
+];
+
+/* Мирные начала слов. Список короткий и держится на одном правиле:
+   сюда попадает то, что иначе разобьётся о корень выше. */
+var SAFE = [
+  'страх', 'пасажир', 'объектив', 'объект', 'блокнот', 'сучок', 'сучек',
+  'барсук', 'скипидар', 'хлеб', 'колеб', 'погреб', 'гребат', 'гребл',
+  'оскорб', 'употреб', 'истреб', 'ослаб', 'услаб', 'углуб', 'требов',
+  'потреб', 'наблюд', 'обляп', 'оглобл', 'корабл', 'рубл', 'грабл', 'сабл',
+  'команд', 'мандарин', 'мудр', 'изумруд', 'трахе', 'сукно', 'посуд', 'побед'
+];
+
+function isSafeWord(w) {
+  for (var i = 0; i < SAFE.length; i++) {
+    if (w.indexOf(SAFE[i]) === 0) return true;
+  }
+  return false;
+}
+
+// Корень засчитывается, только если слева от него начало слова или приставка
+function rootIn(word) {
+  for (var i = 0; i < ROOTS.length; i++) {
+    var at = word.indexOf(ROOTS[i]);
+    while (at !== -1) {
+      if (PREFIX.indexOf(word.slice(0, at)) !== -1) return ROOTS[i];
+      at = word.indexOf(ROOTS[i], at + 1);
+    }
+  }
+  return '';
+}
+
+/* Слово смотрим целиком, а потом ещё раз — склеенным с соседями.
+   «х.у.й» и «х у й» разваливаются на однобуквенные обрывки, поодиночке в них
+   ничего не видно. Склеиваем только подряд идущие куски не длиннее трёх букв:
+   склей мы всё подряд, «с ранами» стало бы бранью, а «ты х.у.й» — наоборот,
+   перестало бы ею быть, потому что корень оказался бы не в начале слова. */
+var GLUE_MAX = 3;      // длина обрывка, который считаем частью разорванного слова
+var GLUE_LIMIT = 24;   // дальше склеивать бессмысленно
+
+function isRude(s) {
+  var list = words(s);
+  for (var i = 0; i < list.length; i++) {
+    if (!isSafeWord(list[i]) && rootIn(list[i])) return true;
+    if (list[i].length > GLUE_MAX) continue;
+
+    var glue = list[i];
+    for (var j = i + 1; j < list.length && list[j].length <= GLUE_MAX; j++) {
+      glue += list[j];
+      if (glue.length > GLUE_LIMIT) break;
+      if (!isSafeWord(glue) && rootIn(glue)) return true;
+    }
+  }
+  return false;
+}
+
+/* Ссылки. Под свадебными фото не должно появиться чужой рекламы, поэтому
+   отсекаем и явный адрес, и просто «что-то.ru». Проверяем ещё и текст
+   без пробелов — «пример . ру» пишется и так. */
+var TLD = 'ru|рф|ру|su|com|net|org|info|biz|io|me|co|cc|tv|app|dev|pro|name|' +
+          'xyz|online|site|store|shop|club|top|life|link|space|fun|team|' +
+          'ua|by|kz|am|ge|tk|gg';
+var LINK_WORD_RE = /(^|[^а-яa-z])(https?|www)([^а-яa-z]|$)/i;
+var DOMAIN_RE = new RegExp('[a-zа-яё0-9-]+\\.(' + TLD + ')(?![a-zа-яё0-9])', 'i');
+
+function isLink(s) {
+  var t = String(s || '');
+  if (LINK_WORD_RE.test(t) || /https?:\/\//i.test(t)) return true;
+  return DOMAIN_RE.test(t) || DOMAIN_RE.test(t.replace(/\s+/g, ''));
+}
+
+var RUDE_TEXT = 'Давайте без грубостей. Перепишите, пожалуйста';
+var LINK_TEXT = 'Ссылки в комментариях не публикуем';
+
+// Одна причина, по которой комментарий сейчас не уйдёт, или пустая строка
+function commentError(s) {
+  var body = String(s || '').trim();
+  if (!body) return 'Напишите что-нибудь, пустой комментарий не отправляется';
+  if (body.length > CONFIG.CM_MAX) {
+    return 'Слишком длинно: ' + body.length + ' знаков из ' + CONFIG.CM_MAX;
+  }
+  if (isLink(body)) return LINK_TEXT;
+  if (isRude(body)) return RUDE_TEXT;
+  return '';
 }
 
 /* --------------------------------------------------------------------------
@@ -966,12 +1134,21 @@ function countPhotos(extra) {
     });
 }
 
-// id.desc — запасной порядок: если у двух снимков совпало время, страницы
-// не должны разъезжаться при подгрузке
+/* id.desc — запасной порядок: если у двух снимков совпало время, страницы
+   не должны разъезжаться при подгрузке.
+
+   Числа лайков и комментариев и два последних комментария приезжают тем же
+   запросом, что и сама порция: база умеет считать связанные записи и тут же
+   отдавать их кусок. Двенадцать карточек стоят одного обращения, а не
+   двенадцати и не двух. */
+var PAGE_SELECT = 'id,guest_id,preview_path,created_at,' +
+                  'likes(count),comments(count),last:comments(id,guest_id,body,created_at)';
+
 function fetchPage(offset, limit) {
-  return restGet('photos?select=id,guest_id,preview_path,created_at' +
+  return restGet('photos?select=' + PAGE_SELECT +
                  '&hidden=eq.false&order=created_at.desc,id.desc' +
-                 '&offset=' + offset + '&limit=' + limit)
+                 '&offset=' + offset + '&limit=' + limit +
+                 '&last.order=created_at.desc&last.limit=' + CONFIG.CM_PREVIEW)
     .then(function (r) { return r.json(); });
 }
 
@@ -992,6 +1169,7 @@ function likesTotal(photoIds) {
 
 function cardNode(row) {
   var g = guestOf(row.guest_id);
+  photoRow[row.id] = row;
 
   var card = document.createElement('article');
   card.className = 'card';
@@ -1046,9 +1224,13 @@ function cardNode(row) {
   img.addEventListener('error', function () { shot.classList.add('is-ready'); });
   img.src = photoUrl(row.preview_path);
   shot.appendChild(img);
+  shot.addEventListener('click', function () { openPhoto(row, true); });
 
   card.appendChild(top);
   card.appendChild(shot);
+  card.appendChild(actsNode(row));
+  card.appendChild(talkNode(row));
+  paintIn(card, row.id);          // карточки ещё нет в разметке — красим на месте
   return card;
 }
 
@@ -1112,7 +1294,15 @@ function feedMore() {
 
   return fetchPage(feed.offset, CONFIG.PAGE).then(function (rows) {
     rows = rows || [];
-    return ensureGuests(rows).then(function () { return rows; });
+    absorbStats(rows);
+    /* Свои лайки — отдельный вызов: их не спросишь, не показав ключ гостя,
+       а ключу не место в обычном запросе к таблице. Карточек он не задерживает
+       и разметку не двигает — закрасит сердечки, когда придёт. */
+    var ids = rows.map(function (r) { return r.id; });
+    loadMyLikes(ids).then(function () {
+      ids.forEach(function (id) { paintPhoto(id); });
+    });
+    return ensureGuests(rows.concat(talkAuthors(rows))).then(function () { return rows; });
   }).then(function (rows) {
     skels.forEach(function (s) { s.remove(); });
 
@@ -1179,6 +1369,10 @@ function feedPrepend(row) {
   if (!row || !row.preview_path) return;
   var list = el('feed');
   if (list.querySelector('.card[data-id="' + row.id + '"]')) return;
+
+  // снимок только что загружен — спрашивать базу о его лайках незачем
+  stats[row.id] = { likes: 0, comments: 0, last: [] };
+  liked[row.id] = false;
 
   var node = cardNode(row);
   var first = list.querySelector('.card:not(.is-skeleton)');
@@ -1263,6 +1457,7 @@ var shownGuest = null;
 function openGuest(id, push) {
   var mine = !!(me && me.id === id);
   shownGuest = id;
+  shownPhoto = null;
 
   fillGuestHead(guestOf(id), mine);
   // гость мог зарегистрироваться уже после того, как мы прочитали витрину
@@ -1281,7 +1476,7 @@ function openGuest(id, push) {
     try { history.pushState({ guest: id }, '', location.href); } catch (e) { /* переживём */ }
   }
 
-  restGet('photos?select=id,preview_path,created_at&hidden=eq.false&guest_id=eq.' +
+  restGet('photos?select=id,guest_id,preview_path,created_at&hidden=eq.false&guest_id=eq.' +
           encodeURIComponent(id) + '&order=created_at.desc,id.desc')
     .then(function (r) { return r.json(); })
     .then(function (rows) {
@@ -1305,8 +1500,11 @@ function openGuest(id, push) {
 }
 
 function cellNode(row, mine) {
+  photoRow[row.id] = row;
+
   var cell = document.createElement('div');
   cell.className = 'cell';
+  cell.dataset.id = row.id;
 
   var shot = document.createElement('div');
   shot.className = 'cell-shot';
@@ -1315,6 +1513,7 @@ function cellNode(row, mine) {
   img.alt = '';
   img.loading = 'lazy';
   shot.appendChild(img);
+  shot.addEventListener('click', function () { openPhoto(row, true); });
   cell.appendChild(shot);
 
   // Удалять можно только у себя. На чужой карточке кнопки нет вовсе.
@@ -1351,9 +1550,476 @@ function askDelete(photoId, cell) {
 }
 
 function backToFeed() {
+  shownPhoto = null;
+  shownGuest = null;
   show('s-feed');
   // лента возвращается туда же, где её оставили, а не в начало
   window.scrollTo(0, feed.scrollY || 0);
+}
+
+/* ==========================================================================
+   ЛАЙКИ, КОММЕНТАРИИ, ЖАЛОБЫ
+
+   Всё, что зависит от «кто это», решается программой внутри базы: браузер
+   присылает только скрытый ключ гостя, guest_id из браузера доверенным
+   не считается. Прямую запись в likes, comments и reports у публичной роли
+   на этом этапе забрали — в обход программ теперь не пройти.
+   ========================================================================== */
+
+var stats = {};    // photo_id → { likes, comments, last: [последние комментарии] }
+var liked = {};    // photo_id → лайкнул ли этот гость
+var photoRow = {}; // photo_id → строка снимка, чтобы не перечитывать её ради экрана фото
+
+function cardCount(box) {
+  return (box && box[0] && typeof box[0].count === 'number') ? box[0].count : 0;
+}
+
+// Разложить счётчики, приехавшие вместе с порцией ленты
+function absorbStats(rows) {
+  (rows || []).forEach(function (row) {
+    stats[row.id] = {
+      likes: cardCount(row.likes),
+      comments: cardCount(row.comments),
+      last: row.last || []
+    };
+  });
+}
+
+/* То же самое, но для снимка, открытого мимо ленты — из карточки гостя.
+   Один снимок, один запрос; в цикле по карточкам это не вызывается. */
+function loadStats(ids) {
+  ids = (ids || []).filter(Boolean);
+  if (!ids.length) return Promise.resolve();
+
+  var q = 'photos?select=id,likes(count),comments(count),' +
+          'last:comments(id,guest_id,body,created_at)' +
+          '&id=in.(' + ids.join(',') + ')' +
+          '&last.order=created_at.desc&last.limit=' + CONFIG.CM_PREVIEW;
+
+  return Promise.all([
+    restGet(q).then(function (r) { return r.json(); })
+      .then(absorbStats)
+      .catch(function () { /* сеть моргнула — покажем нули, обновится при перезагрузке */ }),
+    loadMyLikes(ids)
+  ]);
+}
+
+// Свои лайки на всю порцию — один вызов. Чужие так не узнать: программа
+// сама находит гостя по ключу и отдаёт только его.
+function loadMyLikes(ids) {
+  if (!me || !me.secret || !ids.length) return Promise.resolve();
+  return rpc('my_likes', { p_secret: me.secret, p_photo_ids: ids })
+    .then(function (list) {
+      ids.forEach(function (id) { if (!(id in liked)) liked[id] = false; });
+      (list || []).forEach(function (id) { liked[id] = true; });
+    })
+    .catch(function () { /* сердечки останутся пустыми, нажатие всё равно работает */ });
+}
+
+// Авторы комментариев из превью: их ников в витрине могло ещё не быть
+function talkAuthors(rows) {
+  var out = [];
+  (rows || []).forEach(function (row) {
+    var s = stats[row.id];
+    if (s) s.last.forEach(function (c) { out.push({ guest_id: c.guest_id }); });
+  });
+  return out;
+}
+
+function statOf(id) {
+  if (!stats[id]) stats[id] = { likes: 0, comments: 0, last: [] };
+  return stats[id];
+}
+
+/* --------------------------------------------------------------------------
+   Значки. Рисуются в разметке, чтобы не тащить шрифт со значками ради трёх
+   картинок; заливка сердца переключается классом.
+   -------------------------------------------------------------------------- */
+
+function icon(paths, extra) {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  paths.forEach(function (d) {
+    var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', 'currentColor');
+    p.setAttribute('stroke-width', (extra && extra.w) || '1.5');
+    p.setAttribute('stroke-linecap', 'round');
+    p.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(p);
+  });
+  return svg;
+}
+
+var D_HEART = 'M12 20.2C7.5 16.9 4 14.2 4 10.6 4 8.1 5.9 6.2 8.3 6.2c1.5 0 2.9.7 3.7 1.9' +
+              '.8-1.2 2.2-1.9 3.7-1.9 2.4 0 4.3 1.9 4.3 4.4 0 3.6-3.5 6.3-8 9.6z';
+var D_TALK = 'M20 12.5c0 3.6-3.6 6.5-8 6.5-.9 0-1.8-.1-2.6-.4L5 20l1.1-3.1C4.8 15.7 4 14.2 4 12.5 4 8.9 7.6 6 12 6s8 2.9 8 6.5z';
+var D_FLAG = 'M6 20V5m0 0h11l-2 3.2L17 11.5H6';
+
+/* --------------------------------------------------------------------------
+   Строка действий под снимком
+   -------------------------------------------------------------------------- */
+
+function actNode(kind, withNumber) {
+  var b = document.createElement('button');
+  b.className = 'act act-' + kind;
+  b.type = 'button';
+  b.appendChild(icon([kind === 'like' ? D_HEART : kind === 'talk' ? D_TALK : D_FLAG]));
+  if (withNumber) {
+    var n = document.createElement('span');
+    n.className = 'act-n';
+    b.appendChild(n);
+  }
+  return b;
+}
+
+function actsNode(row) {
+  var wrap = document.createElement('div');
+  wrap.className = 'acts';
+  wrap.dataset.id = row.id;
+
+  var like = actNode('like', true);
+  like.setAttribute('aria-label', 'Нравится');
+  like.addEventListener('click', function () { tapLike(row.id); });
+
+  var talk = actNode('talk', true);
+  talk.setAttribute('aria-label', 'Комментарии');
+  talk.addEventListener('click', function () { openPhoto(row, true); });
+
+  var flag = actNode('flag', false);
+  flag.setAttribute('aria-label', 'Пожаловаться');
+  flag.addEventListener('click', function () { tapReport(row.id); });
+
+  wrap.appendChild(like);
+  wrap.appendChild(talk);
+  wrap.appendChild(flag);
+  return wrap;
+}
+
+/* Два последних комментария прямо в ленте и строка «показать все N» */
+function talkNode(row) {
+  var box = document.createElement('div');
+  box.className = 'talk';
+  box.dataset.id = row.id;
+  return box;
+}
+
+function cmWord(n) {
+  var t = n % 10, h = n % 100;
+  if (t === 1 && h !== 11) return 'комментарий';
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return 'комментария';
+  return 'комментариев';
+}
+
+function nickOf(guestId) {
+  return guestOf(guestId).nick;
+}
+
+function fillTalk(box, id) {
+  var s = statOf(id);
+  box.innerHTML = '';
+  if (!s.comments) { box.hidden = true; return; }
+  box.hidden = false;
+
+  if (s.comments > s.last.length) {
+    var more = document.createElement('button');
+    more.className = 'talk-all';
+    more.type = 'button';
+    more.textContent = 'Показать все ' + s.comments + ' ' + cmWord(s.comments);
+    more.addEventListener('click', function () { openPhoto(photoRow[id] || { id: id }, true); });
+    box.appendChild(more);
+  }
+
+  // в базе они лежат от свежих к старым, а читаются сверху вниз
+  s.last.slice().reverse().forEach(function (c) {
+    var p = document.createElement('p');
+    p.className = 'talk-line';
+    var b = document.createElement('b');
+    b.textContent = nickOf(c.guest_id);
+    p.appendChild(b);
+    p.appendChild(document.createTextNode(' ' + c.body));
+    box.appendChild(p);
+  });
+}
+
+/* Один снимок может стоять сразу на двух экранах — в ленте и на странице фото.
+   Перерисовываем всюду, где он встретился, чтобы числа не разъезжались. */
+function paintIn(root, id) {
+  var s = statOf(id);
+  all('.acts[data-id="' + id + '"]', root).forEach(function (wrap) {
+    var like = wrap.querySelector('.act-like');
+    var talk = wrap.querySelector('.act-talk');
+    if (like) {
+      like.classList.toggle('is-on', !!liked[id]);
+      like.setAttribute('aria-pressed', liked[id] ? 'true' : 'false');
+      like.querySelector('.act-n').textContent = s.likes;
+    }
+    if (talk) talk.querySelector('.act-n').textContent = s.comments;
+  });
+  all('.talk[data-id="' + id + '"]', root).forEach(function (box) { fillTalk(box, id); });
+}
+
+function paintPhoto(id) { paintIn(document, id); }
+
+/* --------------------------------------------------------------------------
+   Лайк. Число меняется сразу, запрос уходит следом; не прошёл — вернём назад.
+   -------------------------------------------------------------------------- */
+
+function tapLike(id) {
+  if (siteState() === 'closed') { applyState(); return; }
+  if (!me || !me.secret) { toast('Не получилось подтвердить, кто вы'); return; }
+
+  var s = statOf(id);
+  var wasLiked = !!liked[id], wasN = s.likes;
+
+  liked[id] = !wasLiked;
+  s.likes = Math.max(0, wasN + (wasLiked ? -1 : 1));
+  paintPhoto(id);
+
+  rpc('toggle_like', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
+    if (!res || res.ok !== true) throw new Error((res && res.error) || 'отказ');
+    liked[id] = !!res.liked;
+    s.likes = res.likes;
+    paintPhoto(id);
+  }).catch(function () {
+    liked[id] = wasLiked;
+    s.likes = wasN;
+    paintPhoto(id);
+    toast('Лайк не сохранился');
+  });
+}
+
+/* --------------------------------------------------------------------------
+   Жалоба. Одна от гостя на снимок; третья прячет снимок, но не удаляет его —
+   он ждёт разбора в панели владельца. Автору ничего не показываем.
+   -------------------------------------------------------------------------- */
+
+function tapReport(id) {
+  if (siteState() === 'closed') { applyState(); return; }
+  if (!me || !me.secret) { toast('Не получилось подтвердить, кто вы'); return; }
+  if (!window.confirm('Пожаловаться на это фото?')) return;
+
+  rpc('add_report', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
+    if (!res || res.ok !== true) { toast('Жалоба не отправилась'); return; }
+    toast(res.already ? 'Вы уже жаловались на это фото' : 'Жалоба отправлена');
+    if (res.hidden) dropPhoto(id);
+  }).catch(function () {
+    toast('Жалоба не отправилась');
+  });
+}
+
+// Снимок скрыт — убираем его с глаз, не перезагружая ленту
+function dropPhoto(id) {
+  if (shownPhoto === id) history.back();
+  all('.card[data-id="' + id + '"]').forEach(function (card) {
+    card.remove();
+    if (feed.offset > 0) feed.offset -= 1;
+  });
+  all('.cell[data-id="' + id + '"]').forEach(function (cell) {
+    cell.remove();
+    var n = parseInt(el('guest-photos').textContent, 10);
+    if (!isNaN(n)) el('guest-photos').textContent = Math.max(0, n - 1);
+  });
+}
+
+/* --------------------------------------------------------------------------
+   Страница фото: снимок целиком, все комментарии и поле ввода
+   -------------------------------------------------------------------------- */
+
+var shownPhoto = null;
+
+function openPhoto(row, push) {
+  if (!row || !row.id) return;
+  if (photoRow[row.id]) row = photoRow[row.id];
+  else if (row.preview_path) photoRow[row.id] = row;
+
+  shownPhoto = row.id;
+
+  // куда вернуться по кнопке «назад»
+  if (el('s-feed').classList.contains('is-on')) feed.scrollY = window.scrollY;
+
+  var g = guestOf(row.guest_id);
+  el('photo-ava').src = avatarUrl(g.avatar_kind, g.avatar_value);
+  el('photo-nick').textContent = g.nick;
+  el('photo-time').textContent = hhmm(row.created_at);
+  el('photo-time').dateTime = row.created_at || '';
+
+  var shot = el('photo-shot');
+  shot.classList.remove('is-ready');
+  shot.style.aspectRatio = shotRatio(row.preview_path) || '4 / 5';
+  var img = el('photo-img');
+  img.alt = 'Снимок гостя ' + g.nick;
+  img.onload = img.onerror = function () { shot.classList.add('is-ready'); };
+  img.src = row.preview_path ? photoUrl(row.preview_path) : '';
+  // снимок мог уже лежать в памяти браузера — тогда onload не сработает
+  if (img.complete) shot.classList.add('is-ready');
+
+  var actsBox = el('photo-acts');
+  actsBox.innerHTML = '';
+  actsBox.appendChild(actsNode(row));
+
+  el('photo-list').innerHTML = '';
+  el('photo-none').hidden = true;
+  el('say-input').value = '';
+  setErr('err-say', '');
+  sayLeft();
+
+  show('s-photo');
+  if (push) {
+    try { history.pushState({ photo: row.id }, '', location.href); } catch (e) { /* переживём */ }
+  }
+
+  el('photo-who').onclick = function () { openGuest(row.guest_id, true); };
+
+  paintPhoto(row.id);
+  // из карточки гостя снимок открывается, минуя ленту: про его лайки мы ещё
+  // ничего не знаем, поэтому один раз дочитываем
+  var known = (row.id in liked);
+  var ready = known ? Promise.resolve() : loadStats([row.id]);
+  ready.then(function () { if (shownPhoto === row.id) paintPhoto(row.id); });
+  loadComments(row.id);
+}
+
+// Весь список комментариев к снимку — одним запросом
+function loadComments(id) {
+  return restGet('comments?select=id,guest_id,body,created_at&photo_id=eq.' +
+                 encodeURIComponent(id) + '&order=created_at.asc')
+    .then(function (r) { return r.json(); })
+    .then(function (rows) {
+      if (shownPhoto !== id) return;
+      rows = rows || [];
+      var s = statOf(id);
+      s.comments = rows.length;
+      s.last = rows.slice(-CONFIG.CM_PREVIEW).reverse();
+      return ensureGuests(rows).then(function () {
+        if (shownPhoto !== id) return;
+        drawComments(id, rows);
+        paintPhoto(id);
+      });
+    })
+    .catch(function () {
+      if (shownPhoto === id) el('photo-none').textContent = 'Комментарии не загрузились';
+    });
+}
+
+function drawComments(id, rows) {
+  var box = el('photo-list');
+  box.innerHTML = '';
+  rows.forEach(function (c) { box.appendChild(commentNode(id, c)); });
+  el('photo-none').hidden = rows.length > 0;
+}
+
+function commentNode(photoId, c) {
+  var wrap = document.createElement('div');
+  wrap.className = 'cm';
+  wrap.dataset.id = c.id;
+
+  var body = document.createElement('p');
+  body.className = 'cm-body';
+  var nick = document.createElement('b');
+  nick.className = 'cm-nick';
+  nick.textContent = nickOf(c.guest_id);
+  body.appendChild(nick);
+  body.appendChild(document.createTextNode(' ' + c.body));
+
+  var foot = document.createElement('p');
+  foot.className = 'cm-foot';
+  var time = document.createElement('time');
+  time.dateTime = c.created_at;
+  time.textContent = hhmm(c.created_at);
+  foot.appendChild(time);
+
+  // Удалять можно только своё. У чужого комментария кнопки нет вовсе,
+  // а если её подставить руками — база всё равно откажет.
+  if (me && me.id === c.guest_id) {
+    var del = document.createElement('button');
+    del.className = 'cm-del';
+    del.type = 'button';
+    del.textContent = 'Удалить';
+    del.addEventListener('click', function () { askDeleteComment(photoId, c.id, wrap); });
+    foot.appendChild(del);
+  }
+
+  wrap.appendChild(body);
+  wrap.appendChild(foot);
+  return wrap;
+}
+
+function askDeleteComment(photoId, commentId, node) {
+  if (!window.confirm('Удалить свой комментарий?')) return;
+  if (!me || !me.secret) { toast('Не получилось подтвердить, что комментарий ваш'); return; }
+
+  rpc('delete_comment', { p_secret: me.secret, p_comment_id: commentId }).then(function (res) {
+    if (!res || res.ok !== true) { toast('Не получилось удалить комментарий'); return; }
+    node.remove();
+    var s = statOf(photoId);
+    s.comments = Math.max(0, s.comments - 1);
+    s.last = s.last.filter(function (c) { return c.id !== commentId; });
+    el('photo-none').hidden = s.comments > 0;
+    paintPhoto(photoId);
+    toast('Комментарий удалён');
+  }).catch(function () {
+    toast('Не получилось удалить комментарий');
+  });
+}
+
+function sayLeft() {
+  var left = CONFIG.CM_MAX - el('say-input').value.length;
+  el('say-left').textContent = 'Осталось знаков: ' + left;
+}
+
+function saySend() {
+  if (siteState() === 'closed') { applyState(); return; }
+  setErr('err-say', '');
+
+  var id = shownPhoto;
+  if (!id) return;
+  var body = el('say-input').value;
+
+  /* Длина, пустота, грубость и ссылки проверяются здесь — до отправки.
+     Длину и пустоту база проверяет ещё раз у себя: браузерную проверку
+     обходят, программу внутри базы — нет. */
+  var bad = commentError(body);
+  if (bad) { setErr('err-say', bad); return; }
+
+  if (!me || !me.secret) { setErr('err-say', 'Не получилось подтвердить, кто вы'); return; }
+
+  var btn = el('say-go');
+  busy(btn, true, '…');
+
+  rpc('add_comment', { p_secret: me.secret, p_photo_id: id, p_body: body.trim() })
+    .then(function (res) {
+      busy(btn, false);
+      if (!res || res.ok !== true) {
+        var code = res && res.error;
+        setErr('err-say',
+          code === 'too_long' ? 'Слишком длинно, не больше ' + CONFIG.CM_MAX + ' знаков' :
+          code === 'empty' ? 'Напишите что-нибудь, пустой комментарий не отправляется' :
+          'Комментарий не отправился. Попробуйте ещё раз');
+        return;
+      }
+      var c = res.comment;
+      if (c && c.guest_id && c.nick && !guestMap[c.guest_id]) {
+        guestMap[c.guest_id] = { id: c.guest_id, nick: c.nick, avatar_kind: 'preset', avatar_value: '1' };
+      }
+      el('say-input').value = '';
+      sayLeft();
+      if (shownPhoto === id && c) {
+        el('photo-list').appendChild(commentNode(id, c));
+        el('photo-none').hidden = true;
+        var s = statOf(id);
+        s.comments += 1;
+        s.last = [c].concat(s.last).slice(0, CONFIG.CM_PREVIEW);
+        paintPhoto(id);
+      }
+    })
+    .catch(function () {
+      busy(btn, false);
+      setErr('err-say', 'Комментарий не отправился. Попробуйте ещё раз');
+    });
 }
 
 /* ==========================================================================
@@ -1819,12 +2485,23 @@ function init() {
   el('up-back').addEventListener('click', function () { history.back(); });
   el('up-tofeed').addEventListener('click', function () { history.back(); });
 
+  // --- страница фото ---
+  el('photo-back').addEventListener('click', function () { history.back(); });
+  el('say-go').addEventListener('click', saySend);
+  el('say-input').addEventListener('input', sayLeft);
+  el('say-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); saySend(); }
+  });
+
   // возврат кнопкой браузера и жестом «назад» на айфоне
   window.addEventListener('popstate', function (e) {
     var s = e.state;
+    if (s && s.photo) { openPhoto(photoRow[s.photo] || { id: s.photo }, false); return; }
+    shownPhoto = null;
     if (s && s.guest) openGuest(s.guest, false);
     else if (el('s-guest').classList.contains('is-on')) backToFeed();
     else if (el('s-upload').classList.contains('is-on')) backToFeed();
+    else if (el('s-photo').classList.contains('is-on')) backToFeed();
   });
 
   refreshLogin();

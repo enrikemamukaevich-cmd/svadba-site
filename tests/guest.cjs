@@ -46,4 +46,31 @@ function loadGuest() {
   return g;
 }
 
-module.exports = { loadGuest: loadGuest };
+/* Проверкам этапа 5 одного гостя мало: чужой комментарий надо попробовать
+   удалить от другого лица, три жалобы должны прийти от трёх разных гостей,
+   а забаненному положено получить отказ. Эти трое заведены в базе один раз
+   и лежат в том же guest.local.json — их ключи такие же тайные.
+
+   Если их там нет, проверки этапа 5 сами объяснят, что делать: завести
+   гостей обычной регистрацией на сайте и вписать сюда, а «тест-бан»
+   вдобавок пометить в базе banned = true — публичным ключом это не делается
+   и не должно делаться. */
+function loadMates() {
+  var g = loadGuest();
+  var need = ['mate', 'mate2', 'banned'];
+  var missing = need.filter(function (k) { return !(g[k] && g[k].secret && g[k].id); });
+  if (missing.length) {
+    console.error(
+      '\nВ tests/guest.local.json не хватает вспомогательных гостей: ' + missing.join(', ') + '\n\n' +
+      'Заведите их регистрацией на сайте (пин 1234) и добавьте в файл:\n' +
+      '  "mate":   { "id": "…", "nick": "тест-друг",   "avatar_kind": "preset", "avatar_value": "2", "secret": "…" },\n' +
+      '  "mate2":  { "id": "…", "nick": "тест-третий", "avatar_kind": "preset", "avatar_value": "3", "secret": "…" },\n' +
+      '  "banned": { "id": "…", "nick": "тест-бан",    "avatar_kind": "preset", "avatar_value": "5", "secret": "…" }\n\n' +
+      'Последнему один раз выполните в SQL-редакторе Supabase:\n' +
+      "  update guests set banned = true where nick_key = 'тест-бан';\n");
+    process.exit(2);
+  }
+  return { me: g, mate: g.mate, mate2: g.mate2, banned: g.banned };
+}
+
+module.exports = { loadGuest: loadGuest, loadMates: loadMates };
