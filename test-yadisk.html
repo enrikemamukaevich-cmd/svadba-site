@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Проверка заливки</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 0; padding: 16px; color: #111; }
+  textarea { width: 100%; height: 110px; font: 12px/1.35 ui-monospace, monospace; }
+  button { font: 15px system-ui, sans-serif; padding: 10px 16px; margin: 8px 8px 0 0; }
+  pre { white-space: pre-wrap; word-break: break-all; font: 12px/1.4 ui-monospace, monospace;
+        background: #f4f4f4; padding: 10px; }
+</style>
+</head>
+<body>
+
+<h1>Проверка заливки</h1>
+<p>Временная страница этапа 7. Удаляется сразу после проверки.</p>
+
+<p>Одноразовая ссылка (href от Яндекса):</p>
+<textarea id="href" spellcheck="false"></textarea>
+
+<button id="go">Отправить файл</button>
+<button id="go-empty">Только preflight</button>
+
+<pre id="log">готово к запуску</pre>
+
+<script>
+/* Страница берёт href из адресной строки: после решётки (#) — тогда ссылка
+   не уходит на сервер хостинга, — либо из ?href=. Поле ниже можно заполнить
+   и руками. Отправляем настоящий PUT прямо в Яндекс: смысл проверки в том,
+   разрешит ли Яндекс браузеру заливку с чужого домена. */
+
+var out = document.getElementById('log');
+var lines = [];
+
+function say(s) {
+  lines.push(s);
+  out.textContent = lines.join('\n');
+  window.RESULT = lines.join('\n');
+}
+
+function fromAddress() {
+  var h = location.hash.replace(/^#/, '');
+  if (h.indexOf('href=') === 0) return decodeURIComponent(h.slice(5));
+  if (h.indexOf('http') === 0) return decodeURIComponent(h);
+  var m = /[?&]href=([^&]+)/.exec(location.search);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+document.getElementById('href').value = fromAddress();
+
+/* Настоящий JPEG размером один на один — чтобы на Диске лежал файл,
+   который открывается, а не мусор. */
+var JPEG = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRof' +
+           'Hh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAAB' +
+           'AAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+
+function blob() {
+  var bin = atob(JPEG);
+  var arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: 'image/jpeg' });
+}
+
+function run(withBody) {
+  var href = document.getElementById('href').value.trim();
+  lines = [];
+  if (!href) { say('ссылки нет'); return; }
+
+  say('origin: ' + location.origin);
+  say('хост ссылки: ' + (function () { try { return new URL(href).host; } catch (e) { return '?'; } })());
+  say('PUT пошёл…');
+
+  var t0 = Date.now();
+  fetch(href, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg' },
+    body: withBody ? blob() : new Blob([], { type: 'image/jpeg' })
+  }).then(function (r) {
+    say('ОТВЕТ: ' + r.status + ' ' + r.statusText + ' за ' + (Date.now() - t0) + ' мс');
+    say('тип ответа: ' + r.type);
+    var seen = [];
+    r.headers.forEach(function (v, k) { seen.push(k + ': ' + v); });
+    say('видимые заголовки: ' + (seen.length ? seen.join(' | ') : 'нет'));
+    return r.text().then(function (t) { say('тело: ' + (t ? t.slice(0, 400) : 'пусто')); });
+  }).catch(function (e) {
+    say('СБОЙ: ' + (e && e.name) + ' — ' + (e && e.message));
+    say('так выглядит запрет CORS: браузер не отдаёт подробностей');
+  });
+}
+
+document.getElementById('go').onclick = function () { run(true); };
+document.getElementById('go-empty').onclick = function () { run(false); };
+</script>
+
+</body>
+</html>
