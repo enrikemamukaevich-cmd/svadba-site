@@ -35,6 +35,17 @@ var CONFIG = {
   UP_TRIES: 3,                     // попыток на один файл
   UP_TIMEOUT_MS: 45000,            // отправка тяжелее чтения, срок ожидания длиннее
 
+  /* --- Яндекс.Диск ---
+     Превью в ленте для печати не годится, поэтому следом за ним на Диск
+     владельца уходит нетронутый исходник. Ключ от Диска знает только функция
+     yadisk внутри Supabase; в коде сайта его нет и быть не может.
+     Значение ниже — запасное. Ключ yadisk_enabled в таблице settings главнее:
+     Диск отключается одной строкой в базе, посреди свадьбы и без выкладки. */
+  YADISK_ENABLED: false,
+  YADISK_FN: '/functions/v1/yadisk',
+  YADISK_TRIES: 3,                 // первая попытка и два повтора
+  YADISK_TIMEOUT_MS: 180000,       // исходник до 25 МБ по слабому залу
+
   /* --- лайки, комментарии, жалобы --- */
   CM_MAX: 200,                     // знаков в комментарии
   CM_PREVIEW: 2,                   // сколько последних видно прямо в ленте
@@ -554,6 +565,9 @@ function regFinish() {
     }
     saveGuest(res);
     enterFeed(res);
+    /* Своя аватарка тоже ложится на Диск, в свою папку. Вдогонку и никого
+       не задерживая: вход гостя не должен зависеть от Яндекса ни секунды. */
+    if (draft.avatar_kind === 'custom' && customBlob) yadiskSend(customBlob, 'avatar', null);
   }).catch(function (e) {
     busy(btn, false);
     setErr('err-avatar', 'Не получилось зарегистрироваться: ' + e.message);
@@ -999,6 +1013,10 @@ function siteState() {
    переключить его и логическим типом — принимаем оба вида. */
 var uploadOn = true;
 
+/* Рубильник Диска. null означает «в базе про Диск ничего не сказано» — тогда
+   решает CONFIG.YADISK_ENABLED. */
+var yadiskOn = null;
+
 function truthy(v) {
   if (v === true) return true;
   if (v === false || v === null || v === undefined) return false;
@@ -1018,6 +1036,7 @@ function readSettings() {
         if (!row) return;
         if (row.key in bounds && row.value) bounds[row.key] = row.value;
         if (row.key === 'upload_enabled') uploadOn = truthy(row.value);
+        if (row.key === 'yadisk_enabled') yadiskOn = truthy(row.value);
       });
       return true;
     })
@@ -2557,7 +2576,8 @@ function putPhoto(name, blob) {
   });
 }
 
-// Поле yadisk_path не заполняем вовсе — оно останется пустым до этапа 7
+/* Поле yadisk_path здесь не трогаем: открытым ключом его не изменить, да и
+   исходник в этот момент ещё не ушёл. Отметку ставит функция yadisk позже. */
 function addPhotoRow(name) {
   return fetchTimed(CONFIG.SUPABASE_URL + '/rest/v1/photos', {
     method: 'POST',
@@ -2593,6 +2613,68 @@ function tryTimes(fn, times) {
     });
   }
   return go();
+}
+
+/* --------------------------------------------------------------------------
+   Исходник на Яндекс.Диск
+
+   Гость про Диск не знает ничего: ни надписей, ни ошибок, ни следов в консоли.
+   Всё, что здесь ломается, ломается тихо — снимок к этому времени уже лежит
+   в ленте, и портить гостю вечер сообщением про чужое облако незачем.
+
+   Ключа от Диска здесь нет. Браузер просит одноразовую ссылку у функции
+   внутри Supabase, она одна знает ключ, а файл уходит прямо в Яндекс, минуя
+   и Supabase, и хостинг.
+   -------------------------------------------------------------------------- */
+
+function yadiskLive() {
+  return yadiskOn === null ? !!CONFIG.YADISK_ENABLED : yadiskOn;
+}
+
+function yadiskCall(body) {
+  return fetchTimed(CONFIG.SUPABASE_URL + CONFIG.YADISK_FN, {
+    method: 'POST',
+    headers: dbHeaders(),
+    body: JSON.stringify(body)
+  }, CONFIG.TIMEOUT_MS).then(function (r) {
+    if (!r.ok) throw new Error('посредник ответил ' + r.status);
+    return r.json();
+  });
+}
+
+/* Возвращает путь на Диске или null. Ошибок наружу не выпускает никогда:
+   вызывающая сторона на этот ответ ничего не решает. */
+function yadiskSend(file, kind, photoId) {
+  if (!yadiskLive() || !file || !me || !me.id || !me.secret) return Promise.resolve(null);
+
+  return tryTimes(function () {
+    return yadiskCall({
+      action: 'link',
+      guest_id: me.id,
+      secret: me.secret,
+      kind: kind,
+      name: (file && file.name) || ''
+    }).then(function (j) {
+      if (!j || !j.href) throw new Error('ссылки нет');
+      return fetchTimed(j.href, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      }, CONFIG.YADISK_TIMEOUT_MS).then(function (r) {
+        // 201 — файл лёг целиком, 202 — Яндекс дособерёт его у себя
+        if (r.status !== 201 && r.status !== 202) throw new Error('Яндекс ответил ' + r.status);
+        return j.path;
+      });
+    });
+  }, CONFIG.YADISK_TRIES).then(function (path) {
+    if (!path || !photoId) return path;
+    /* Поле yadisk_path открытым ключом не правится — и правильно: строку
+       в базе помечает та же функция, своим сервисным ключом. Не вышло —
+       файл на Диске всё равно лежит, просто без отметки. */
+    return tryTimes(function () {
+      return yadiskCall({ action: 'done', guest_id: me.id, secret: me.secret, photo_id: photoId, path: path });
+    }, 2).then(function () { return path; }, function () { return path; });
+  }).catch(function () { return null; });
 }
 
 function putAndRow(it) {
@@ -2633,6 +2715,15 @@ function sendItem(it) {
     });
   }).then(function () {
     return tryTimes(function () { return putAndRow(it); }, CONFIG.UP_TRIES);
+  }).then(function (row) {
+    /* Превью уже в ленте — теперь исходник. Порядок именно такой: подведёт
+       Диск, снимок всё равно опубликован. Ждём здесь, а не в стороне: очередь
+       остаётся строго по одному файлу, вайфай в зале двух потоков не потянет. */
+    if (it.yaDone) return row;
+    return yadiskSend(it.file, 'photo', row && row.id).then(function (path) {
+      if (path) it.yaDone = true;
+      return row;
+    });
   });
 }
 
