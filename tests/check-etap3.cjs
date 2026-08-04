@@ -43,6 +43,33 @@ function db(q, opts) {
 
 function when(iso) { return BASE + '?now=' + encodeURIComponent(iso); }
 
+/* Границы окна берём из базы, а не вписываем в проверку числами.
+   Владелец их двигает: 04.08.2026 window_start уехал с 6 августа на 3-е, и
+   проверка «до открытия» стала падать, хотя лента работала правильно. Считаем
+   моменты от настоящих границ — тогда проверка идёт за настройками сама. */
+var TIME = { before: '', open: '', readonly: '', closed: '' };
+
+async function loadTimes() {
+  var rows = await (await db('settings?select=key,value')).json();
+  var s = {};
+  (rows || []).forEach(function (r) { s[r.key] = r.value; });
+
+  function shift(v, hours) {
+    var t = Date.parse(v);
+    if (isNaN(t)) throw new Error('в настройках нечитаемое время: ' + v);
+    return new Date(t + hours * 3600000).toISOString();
+  }
+
+  TIME.before   = shift(s.window_start, -1);
+  TIME.open     = shift(s.window_start, +1);
+  TIME.readonly = shift(s.window_end, +1);
+  TIME.closed   = shift(s.readonly_end, +1);
+
+  console.log('Границы из базы: приём с ' + s.window_start + ' по ' + s.window_end +
+              ', просмотр до ' + s.readonly_end);
+  return s;
+}
+
 // Размеры снимка зашиты в имя файла — так же их читает и сама лента
 function sizeOf(p) {
   var m = /-(\d{2,5})x(\d{2,5})\.[a-z0-9]+$/i.exec(p || '');
@@ -104,14 +131,16 @@ async function main() {
   var allPhotos = await (await db('photos?select=id,guest_id,preview_path,created_at&hidden=eq.false&order=created_at.desc,id.desc')).json();
   var allGuests = await (await db('guests_public?select=id,nick')).json();
   var allLikes = await (await db('likes?select=photo_id')).json();
-  console.log('\nВ базе: фото ' + allPhotos.length + ', гостей ' + allGuests.length + ', лайков ' + allLikes.length + '\n');
+  console.log('\nВ базе: фото ' + allPhotos.length + ', гостей ' + allGuests.length + ', лайков ' + allLikes.length);
+  await loadTimes();
+  console.log('');
 
   var page = await ctx.newPage();
   page.on('pageerror', function (e) { console.log('  !! ошибка на странице: ' + e.message); });
   await seed(page);
 
   /* === 1. Лента показывает фото, новые сверху ============================ */
-  await page.goto(when('2026-08-06T18:00:00+03:00'));   // обычный режим
+  await page.goto(when(TIME.open));   // обычный режим
   await feedReady(page);
 
   var shown = await page.$$eval('#feed .card:not(.is-skeleton) .card-shot img', function (imgs) {
@@ -254,7 +283,7 @@ async function main() {
   var pickNick = (allGuests.find(function (g) { return g.id === pickId; }) || {}).nick;
   var want = statsFor(pickId);
 
-  await page.goto(when('2026-08-06T18:00:00+03:00'));
+  await page.goto(when(TIME.open));
   await feedReady(page);
 
   /* Открываем штатным путём — нажатием на ник в ленте. Нужного автора может
@@ -320,7 +349,7 @@ async function main() {
 
   /* === 6. Четыре временных состояния ===================================== */
   // до 6 августа 12:00
-  await page.goto(when('2026-08-05T10:00:00+03:00'));
+  await page.goto(when(TIME.before));
   await feedReady(page);
   var plusOff = await page.$eval('#btn-plus', function (b) { return b.classList.contains('is-off'); });
   var ribbon1 = await page.isVisible('#ribbon-readonly');
@@ -332,7 +361,7 @@ async function main() {
   await snap(page, '09-do-6-avgusta.png');
 
   // обычный режим
-  await page.goto(when('2026-08-06T18:00:00+03:00'));
+  await page.goto(when(TIME.open));
   await feedReady(page);
   var plusOn = await page.$eval('#btn-plus', function (b) { return !b.classList.contains('is-off'); });
   var ribbon2 = await page.isVisible('#ribbon-readonly');
@@ -341,7 +370,7 @@ async function main() {
   await snap(page, '10-obychnyj-rezhim.png');
 
   // только просмотр
-  await page.goto(when('2026-08-07T18:00:00+03:00'));
+  await page.goto(when(TIME.readonly));
   await feedReady(page);
   var plusOff3 = await page.$eval('#btn-plus', function (b) { return b.classList.contains('is-off'); });
   var ribbon3 = await page.isVisible('#ribbon-readonly');
@@ -353,7 +382,7 @@ async function main() {
   await snap(page, '11-tolko-prosmotr.png');
 
   // сайт закрыт
-  await page.goto(when('2026-08-08T01:00:00+03:00'));
+  await page.goto(when(TIME.closed));
   await page.waitForTimeout(1500);
   var closedOn = await onScreen(page, 's-closed');
   var feedOn = await onScreen(page, 's-feed');
@@ -365,7 +394,7 @@ async function main() {
 
   // сайт закрыт и для незарегистрированного гостя
   var clean = await ctx.newPage();
-  await clean.goto(when('2026-08-08T01:00:00+03:00'));
+  await clean.goto(when(TIME.closed));
   await clean.waitForTimeout(1500);
   var closedClean = await onScreen(clean, 's-closed');
   var startClean = await onScreen(clean, 's-start');
@@ -388,7 +417,7 @@ async function main() {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
     route.fulfill({ status: 200, headers: cors, body: '[]' });
   });
-  await empty.goto(when('2026-08-06T18:00:00+03:00'));
+  await empty.goto(when(TIME.open));
   await empty.waitForSelector('#feed-empty:not([hidden])', { timeout: 20000 });
   var eTitle = (await empty.textContent('.empty-title')).trim();
   var eSub = (await empty.textContent('.empty-sub')).trim();
@@ -400,7 +429,7 @@ async function main() {
   await empty.close();
 
   /* === 8. Шапка не уезжает при прокрутке ================================= */
-  await page.goto(when('2026-08-06T18:00:00+03:00'));
+  await page.goto(when(TIME.open));
   await feedReady(page);
   var topBefore = await page.$eval('.topbar', function (n) { return n.getBoundingClientRect().top; });
   await page.evaluate(function () { window.scrollTo(0, 1200); });

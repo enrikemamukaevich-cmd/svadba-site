@@ -28,7 +28,22 @@ var KEY = 'sb_publishable_UQtVcMc-DoTEFFvDKE0mxQ_PV5nCSnn';
 // тот же гость, что и в проверках этапа 3; данные в tests/guest.local.json
 var ME = loadGuest();
 
-var NORMAL = '2026-08-06T18:00:00+03:00';        // обычный режим, окно открыто
+/* Момент «окно приёма открыто» считаем от настоящих границ из базы, а не
+   вписываем числом: владелец их двигает, и 04.08.2026 window_start уже уехал
+   с 6 августа на 3-е. Заодно держим сами границы — они нужны, чтобы подменить
+   настройки в проверке рубильника, поменяв только его. */
+var NORMAL = '';
+var BOUNDS = {};
+
+async function loadTimes() {
+  var rows = await (await db('settings?select=key,value')).json();
+  (rows || []).forEach(function (r) { BOUNDS[r.key] = r.value; });
+  var t = Date.parse(BOUNDS.window_start);
+  if (isNaN(t)) throw new Error('в настройках нечитаемое время: ' + BOUNDS.window_start);
+  NORMAL = new Date(t + 3600000).toISOString();
+  console.log('Границы из базы: приём с ' + BOUNDS.window_start + ' по ' + BOUNDS.window_end +
+              '; проверяем в момент ' + NORMAL);
+}
 
 var results = [];
 var uploaded = [];                                // что этот прогон положил в бакет
@@ -123,8 +138,9 @@ async function main() {
     locale: 'ru-RU'
   });
 
+  await loadTimes();
   var was = await mineInFeed();
-  console.log('\nДо прогона у гостя ' + ME.nick + ' в папке feed/: ' + was.length + ' снимков\n');
+  console.log('До прогона у гостя ' + ME.nick + ' в папке feed/: ' + was.length + ' снимков\n');
 
   var page = await ctx.newPage();
   page.on('pageerror', function (e) { console.log('  !! ошибка на странице: ' + e.message); });
@@ -416,13 +432,14 @@ async function main() {
       'content-type': 'application/json'
     };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
+    // границы отдаём настоящие, меняем ровно одно — рубильник
     route.fulfill({
       status: 200, headers: cors,
       body: JSON.stringify([
         { key: 'upload_enabled', value: 'false' },
-        { key: 'window_start', value: '2026-08-06T12:00:00+03:00' },
-        { key: 'window_end', value: '2026-08-07T12:00:00+03:00' },
-        { key: 'readonly_end', value: '2026-08-08T00:00:00+03:00' }
+        { key: 'window_start', value: BOUNDS.window_start },
+        { key: 'window_end', value: BOUNDS.window_end },
+        { key: 'readonly_end', value: BOUNDS.readonly_end }
       ])
     });
   });
