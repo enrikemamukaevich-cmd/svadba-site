@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<!-- Панель в поиске не нужна. Второй заслон — robots.txt в корне сайта. -->
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Панель</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+/* ============================================================================
+   Панель владельца. Оформление берётся из общего styles.css: те же кнопки,
+   те же линии, тот же чёрно-белый строгий вид. Здесь только то, чего в общем
+   файле нет: колонка панели, рубильник, ряды списков и квадратные превью.
+
+   Пользоваться будут стоя, одной рукой, в полутёмном зале — поэтому всё
+   крупное: кнопка не ниже 52 точек, шрифт не мельче 15.
+   ============================================================================ */
+
+#panel {
+  width: 100%;
+  max-width: 480px;
+  padding: 0 16px calc(40px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Нет доступа --------------------------------------------------------- */
+
+.p-deny {
+  padding: 80px 0;
+  text-align: center;
+  font-size: 17px;
+}
+
+/* --- Шапка --------------------------------------------------------------- */
+
+.p-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--paper);
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 0 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.p-top-name {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-indent: .16em;
+}
+
+.p-refresh {
+  border: 0;
+  background: none;
+  padding: 6px 0 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Блоки --------------------------------------------------------------- */
+
+.p-block { padding: 26px 0 4px; }
+.p-block + .p-block { border-top: 1px solid var(--line); }
+
+.p-h {
+  margin: 0 0 14px;
+  font-size: 12px;
+  letter-spacing: .12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.p-empty {
+  margin: 0;
+  padding: 14px 0 18px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* --- Блок 1. Рубильник ---------------------------------------------------
+   Самое крупное на странице. Выключенное состояние вывернуто наизнанку:
+   белым по чёрному видно с расстояния вытянутой руки и в полумраке. */
+
+.p-switch {
+  margin-top: 18px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.p-switch-state {
+  margin: 0;
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.p-switch.is-off .p-switch-state {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.p-switch .btn {
+  border: 0;
+  border-top: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 20px 16px;
+  font-size: 18px;
+}
+
+.p-switch-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* --- Блок 4. Цифры -------------------------------------------------------- */
+
+.p-nums {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.p-num {
+  text-align: center;
+  padding: 18px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.p-num:nth-child(odd)  { border-right: 1px solid var(--line); }
+.p-num:nth-child(n+3)  { border-bottom: 0; }
+
+.p-num b {
+  display: block;
+  font-size: 26px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.p-num span { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); }
+
+.p-sub {
+  margin: 22px 0 12px;
+  font-size: 12px;
+  letter-spacing: .12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Топ по лайкам — пять снимков в ряд, прокручивается вбок */
+.p-top5 {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 88px;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.p-top5-item img {
+  display: block;
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  background: #f2f2f2;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.p-top5-line {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p-top5-line b { font-weight: 500; }
+.p-top5-line span { color: var(--muted); }
+
+/* --- Ряды списков --------------------------------------------------------- */
+
+.p-row {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.p-row:first-child { border-top: 0; }
+
+.p-shot {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  background: #f2f2f2;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.p-row-body { flex: 1 1 auto; min-width: 0; }
+
+.p-nick {
+  margin: 0;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p-meta {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.p-text {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.p-flag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: 2px;
+  vertical-align: 2px;
+}
+
+/* Кнопки внутри ряда: две в строку, каждая под палец */
+.p-acts { display: flex; gap: 8px; margin-top: 10px; }
+.p-acts .btn { margin-top: 0; padding: 13px 8px; font-size: 15px; }
+
+.p-wide { margin-top: 14px; }
+
+/* --- Поиск по гостям ------------------------------------------------------ */
+
+.p-find { margin-bottom: 4px; }
+.p-find .input { font-size: 17px; padding: 14px 0; }
+
+/* --- Сетка снимков для удаления ------------------------------------------- */
+
+.p-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.p-tile {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.p-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #f2f2f2;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.p-tile.is-picked img { border: 2px solid var(--ink); }
+
+.p-tile-nick {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Мелочи --------------------------------------------------------------- */
+
+.p-more { margin-top: 14px; }
+
+.p-busy { opacity: .4; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<main id="panel">
+
+  <!-- Пока секрет не сверен, на странице нет ничего, кроме этой строки -->
+  <p class="p-deny" id="p-deny">Нет доступа</p>
+
+  <div id="p-body" hidden>
+
+    <div class="p-top">
+      <p class="p-top-name">ПАНЕЛЬ · ripsigal &amp; jimbei5</p>
+      <button class="p-refresh" id="p-refresh" type="button">Обновить</button>
+    </div>
+
+    <!-- ===== Блок 1. Рубильник ========================================== -->
+    <section class="p-block" id="b-switch">
+      <h2 class="p-h">Приём фото</h2>
+
+      <div class="p-switch" id="sw-box">
+        <p class="p-switch-state" id="sw-state">…</p>
+        <button class="btn btn-solid" id="sw-go" type="button">…</button>
+      </div>
+
+      <p class="p-switch-note" id="sw-note"></p>
+    </section>
+
+    <!-- ===== Блок 2. Жалобы ============================================= -->
+    <section class="p-block" id="b-reports">
+      <h2 class="p-h">Жалобы</h2>
+      <div id="rp-list"></div>
+      <p class="p-empty" id="rp-none" hidden>Жалоб нет</p>
+    </section>
+
+    <!-- ===== Блок 3. Гости ============================================== -->
+    <section class="p-block" id="b-guests">
+      <h2 class="p-h">Гости</h2>
+
+      <label class="field p-find" for="gu-find">
+        <input class="input" id="gu-find" type="search" maxlength="20"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+               placeholder="поиск по нику">
+      </label>
+
+      <div id="gu-list"></div>
+      <p class="p-empty" id="gu-none" hidden>Никого не нашлось</p>
+      <button class="btn btn-ghost p-more" id="gu-more" type="button" hidden>Показать всех</button>
+    </section>
+
+    <!-- ===== Блок 4. Цифры ============================================== -->
+    <section class="p-block" id="b-stats">
+      <h2 class="p-h">Цифры</h2>
+
+      <div class="p-nums">
+        <div class="p-num"><b id="st-photos">—</b><span>Всего фото</span></div>
+        <div class="p-num"><b id="st-guests">—</b><span>Всего гостей</span></div>
+        <div class="p-num"><b id="st-hour">—</b><span>Фото за час</span></div>
+        <div class="p-num"><b id="st-hidden">—</b><span>Скрытых</span></div>
+      </div>
+
+      <p class="p-sub">Топ по лайкам</p>
+      <div class="p-top5" id="st-top"></div>
+      <p class="p-empty" id="st-top-none" hidden>Лайков пока нет</p>
+    </section>
+
+    <!-- ===== Блок 5. Удаление =========================================== -->
+    <section class="p-block" id="b-remove">
+      <h2 class="p-h">Удалить фото</h2>
+      <p class="note" style="margin-top:0">Нажмите на снимок, чтобы удалить его навсегда. Скрытые жалобами сюда не попадают — они в блоке «Жалобы».</p>
+
+      <div class="p-grid" id="rm-grid"></div>
+      <p class="p-empty" id="rm-none" hidden>Фото пока нет</p>
+
+      <button class="btn btn-ghost p-more" id="rm-more" type="button" hidden>Показать ещё</button>
+    </section>
+
+    <section class="p-block" id="b-comments">
+      <h2 class="p-h">Удалить комментарий</h2>
+
+      <div id="cm-list"></div>
+      <p class="p-empty" id="cm-none" hidden>Комментариев нет</p>
+      <button class="btn btn-ghost p-more" id="cm-more" type="button" hidden>Показать ещё</button>
+    </section>
+
+  </div>
+</main>
+
+<!-- Окно подтверждения: то же, что на гостевой части -->
+<div class="ask-wrap" id="ask" hidden>
+  <div class="ask-back" id="ask-back"></div>
+  <div class="ask" role="dialog" aria-labelledby="ask-text">
+    <p class="ask-text" id="ask-text"></p>
+    <div class="ask-row">
+      <button class="btn btn-ghost" id="ask-no" type="button">Отмена</button>
+      <button class="btn btn-solid" id="ask-yes" type="button">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="panel.js"></script>
+</body>
+</html>
