@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Бокал">
+  <g fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M31 16 H69 V29 C69 45 61 55 50 57 C39 55 31 45 31 29 Z"/>
+    <path d="M31 29 H69"/>
+    <path d="M50 57 V79"/>
+    <path d="M34 81 H66"/>
+  </g>
+</svg>

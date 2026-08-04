@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<title>СВАДЬБА · ripsigal &amp; jimbei5</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<main id="app">
+
+  <!-- ===== Экран 1. Старт ================================================ -->
+  <section class="screen" id="s-start">
+    <div class="brand">
+      <p class="brand-word">СВАДЬБА</p>
+      <h1 class="brand-names">ripsigal &amp; jimbei5</h1>
+      <p class="brand-date">6 августа 2026</p>
+      <hr class="brand-rule">
+    </div>
+    <div class="start-actions">
+      <button class="btn btn-solid" id="go-reg" type="button">Регистрация</button>
+      <button class="btn btn-ghost" id="go-login" type="button">Вход</button>
+    </div>
+    <p class="note start-note" id="photo-count">Загружено фото: …</p>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ===== Экран 2. Регистрация ========================================== -->
+  <section class="screen" id="s-reg">
+    <div class="head">
+      <button class="link" type="button" data-goto="s-start">Назад</button>
+      <h2>Регистрация</h2>
+    </div>
+
+    <label class="field" for="reg-nick">
+      <span class="label">Никнейм</span>
+      <input class="input" id="reg-nick" type="text" maxlength="20"
+             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+             placeholder="как вас подписать">
+      <span class="err" id="err-nick"></span>
+    </label>
+
+    <label class="field" for="reg-word">
+      <span class="label">Кодовое слово</span>
+      <input class="input" id="reg-word" type="text" maxlength="40"
+             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+             placeholder="его называет ведущий">
+      <span class="err" id="err-word"></span>
+    </label>
+
+    <div class="field">
+      <span class="label">Пин-код</span>
+      <div class="pin" id="reg-pin">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Первая цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Вторая цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Третья цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Четвёртая цифра пин-кода">
+      </div>
+      <span class="err" id="err-pin"></span>
+    </div>
+
+    <p class="note">Загружая фото, вы соглашаетесь, что их увидят все гости свадьбы.</p>
+
+    <div class="spacer"></div>
+    <button class="btn btn-solid" id="reg-next" type="button">Далее</button>
+  </section>
+
+  <!-- ===== Экран 3. Аватар =============================================== -->
+  <section class="screen" id="s-avatar">
+    <div class="head">
+      <button class="link" type="button" data-goto="s-reg">Назад</button>
+      <h2>Картинка гостя</h2>
+    </div>
+
+    <div class="own-wrap" id="own-wrap" hidden>
+      <button class="ava" id="own-ava" type="button" data-kind="custom">
+        <img id="own-img" src="" alt="Своё фото">
+      </button>
+    </div>
+
+    <div class="avatars" id="avatar-grid">
+      <button class="ava" type="button" data-kind="preset" data-value="1"><img src="img/avatar-1.svg" alt="Кольца"></button>
+      <button class="ava" type="button" data-kind="preset" data-value="2"><img src="img/avatar-2.svg" alt="Сердце"></button>
+      <button class="ava" type="button" data-kind="preset" data-value="3"><img src="img/avatar-3.svg" alt="Цветок"></button>
+      <button class="ava" type="button" data-kind="preset" data-value="4"><img src="img/avatar-4.svg" alt="Бокал"></button>
+      <button class="ava" type="button" data-kind="preset" data-value="5"><img src="img/avatar-5.svg" alt="Голубь"></button>
+      <button class="ava" type="button" data-kind="preset" data-value="6"><img src="img/avatar-6.svg" alt="Торт"></button>
+    </div>
+
+    <button class="btn btn-dashed" id="pick-photo" type="button">Своё фото</button>
+    <input type="file" id="file-input" accept="image/*" hidden>
+    <span class="err" id="err-avatar"></span>
+
+    <div class="spacer"></div>
+    <button class="btn btn-solid" id="reg-finish" type="button">Войти в ленту</button>
+  </section>
+
+  <!-- ===== Экран подгонки своего фото ==================================== -->
+  <section class="screen" id="s-crop">
+    <div class="head">
+      <h2>Подгоните фото</h2>
+    </div>
+
+    <div class="crop-stage" id="crop-stage">
+      <canvas id="crop-canvas"></canvas>
+      <div class="crop-hole" id="crop-hole"></div>
+    </div>
+
+    <p class="note">Двигайте фото пальцем, щипком приближайте.</p>
+
+    <div class="spacer"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="crop-cancel" type="button">Отмена</button>
+      <button class="btn btn-solid" id="crop-done" type="button">Готово</button>
+    </div>
+  </section>
+
+  <!-- ===== Экран 4. Вход ================================================= -->
+  <section class="screen" id="s-login">
+    <div class="head">
+      <button class="link" type="button" data-goto="s-start">Назад</button>
+      <h2>Вход</h2>
+    </div>
+
+    <label class="field" for="log-nick">
+      <span class="label">Никнейм</span>
+      <input class="input" id="log-nick" type="text" maxlength="20"
+             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </label>
+
+    <div class="field">
+      <span class="label">Пин-код</span>
+      <div class="pin" id="log-pin">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Первая цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Вторая цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Третья цифра пин-кода">
+        <input class="pin-cell" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="Четвёртая цифра пин-кода">
+      </div>
+      <span class="err" id="err-login"></span>
+      <p class="note" id="login-left">Осталось попыток: 3</p>
+    </div>
+
+    <div class="spacer"></div>
+    <button class="btn btn-solid" id="log-go" type="button">Войти</button>
+  </section>
+
+  <!-- ===== Экран «Вход закрыт» =========================================== -->
+  <section class="screen" id="s-blocked">
+    <div class="blocked">
+      <h2>Вход закрыт</h2>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="blocked-home" type="button">На главную</button>
+  </section>
+
+  <!-- ===== Лента ========================================================= -->
+  <section class="screen screen-wide" id="s-feed">
+
+    <div class="sticky">
+      <header class="topbar">
+        <button class="topbar-btn" id="btn-plus" type="button" aria-label="Загрузить фото">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <p class="topbar-title">СВАДЬБА · ripsigal &amp; jimbei5</p>
+        <button class="topbar-me" id="btn-me" type="button" aria-label="Моя карточка">
+          <img id="me-img" src="" alt="">
+        </button>
+      </header>
+
+      <button class="newbar" id="newbar" type="button" hidden></button>
+      <p class="ribbon" id="ribbon-readonly" hidden>Загрузка закрыта. Ленту можно смотреть до 8 августа</p>
+    </div>
+
+    <p class="feed-count" id="feed-count">Загружаем ленту…</p>
+
+    <div class="feed" id="feed"></div>
+
+    <div class="empty" id="feed-empty" hidden>
+      <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <path d="M4 14.5h9l3.2-4.5h15.6l3.2 4.5h9v23H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        <circle cx="24" cy="26" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      </svg>
+      <p class="empty-title">Будьте первым</p>
+      <p class="empty-sub">Нажмите плюс и загрузите фото</p>
+    </div>
+
+    <div id="feed-tail"></div>
+  </section>
+
+  <!-- ===== Экран загрузки ================================================ -->
+  <section class="screen screen-wide" id="s-upload">
+
+    <div class="sticky">
+      <header class="topbar">
+        <button class="topbar-btn topbar-back" id="up-back" type="button" aria-label="Назад">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <p class="topbar-title">ЗАГРУЗКА ФОТО</p>
+        <span class="topbar-btn topbar-hole" aria-hidden="true"></span>
+      </header>
+    </div>
+
+    <div class="up-body">
+
+      <button class="drop" id="up-pick" type="button">
+        <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <path d="M4 14.5h9l3.2-4.5h15.6l3.2 4.5h9v23H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <circle cx="24" cy="26" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+        <span class="drop-title">Выбрать из галереи</span>
+        <span class="drop-sub">до 10 фото за раз</span>
+      </button>
+      <input type="file" id="up-input" accept="image/*" multiple hidden>
+
+      <p class="err" id="err-upload"></p>
+
+      <div class="up-run" id="up-run" hidden>
+        <p class="up-line" id="up-line">Отправляется 1 из 1</p>
+        <div class="up-bar"><span class="up-bar-fill" id="up-fill"></span></div>
+        <div class="up-thumbs" id="up-thumbs"></div>
+        <p class="note up-warn" id="up-warn">Не закрывайте страницу, пока идёт отправка</p>
+      </div>
+
+      <div class="up-done" id="up-done" hidden>
+        <p class="up-result" id="up-result"></p>
+        <button class="btn btn-ghost" id="up-retry" type="button" hidden>Повторить</button>
+        <button class="btn btn-solid" id="up-tofeed" type="button">В ленту</button>
+      </div>
+
+    </div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ===== Карточка гостя ================================================ -->
+  <section class="screen screen-wide" id="s-guest">
+
+    <div class="sticky">
+      <header class="topbar">
+        <button class="topbar-btn topbar-back" id="guest-back" type="button" aria-label="Назад">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <p class="topbar-title" id="guest-title">Гость</p>
+        <span class="topbar-btn topbar-hole" aria-hidden="true"></span>
+      </header>
+    </div>
+
+    <div class="guest-head">
+      <span class="guest-ava"><img id="guest-face" src="" alt=""></span>
+      <h2 class="guest-nick" id="guest-nick"></h2>
+      <p class="guest-since" id="guest-since"></p>
+    </div>
+
+    <div class="nums">
+      <div class="num"><b id="guest-photos">—</b><span>Публикаций</span></div>
+      <div class="num"><b id="guest-likes">—</b><span>Лайков всего</span></div>
+    </div>
+
+    <div class="grid3" id="guest-grid"></div>
+    <p class="guest-none" id="guest-none" hidden>Пока ни одного снимка.</p>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ===== Сайт закрыт =================================================== -->
+  <section class="screen" id="s-closed">
+    <div class="thanks">
+      <p class="thanks-word">Спасибо, все фото у молодожёнов</p>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Голубь">
+  <g fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24 66 C24 47 40 34 59 34 L69 26 C73 23 78 24 79 27 L76 35 C83 43 81 57 71 65 C60 74 42 76 30 71 L18 76 Z"/>
+    <path d="M40 47 C50 43 61 45 67 53 C58 61 46 62 38 57"/>
+    <circle cx="70" cy="32" r="1.6"/>
+    <path d="M79 27 L88 29 L79 33"/>
+  </g>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Сердце">
+  <g fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M50 82 C22 63 14 45 24 33 C34 21 46 24 50 35 C54 24 66 21 76 33 C86 45 78 63 50 82 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,656 @@
+/* ============================================================================
+   СВАДЕБНЫЙ ФОТОСАЙТ · оформление
+   Строгий чёрно-белый минимализм. Белый фон, чёрный текст, тонкие серые линии.
+   Вёрстка под телефон: колонка шириной до 420 точек по центру экрана.
+   ============================================================================ */
+
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --line: #d8d8d8;
+  --line-strong: #000;
+  --muted: #777;
+  --radius: 4px;
+  --pad: 20px;
+}
+
+* { box-sizing: border-box; }
+
+/* атрибут hidden должен побеждать любые display из разметки ниже */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+
+#app {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px var(--pad) 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen { display: none; flex-direction: column; flex: 1; }
+.screen.is-on { display: flex; }
+
+/* --- Общие мелочи ------------------------------------------------------- */
+
+h1, h2 { font-weight: 500; margin: 0; }
+
+.note {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+
+.err {
+  display: none;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 6px;
+  color: var(--ink);
+}
+.err.is-on { display: block; }
+
+.spacer { flex: 1; min-height: 24px; }
+
+/* --- Кнопки -------------------------------------------------------------- */
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 15px 16px;
+  font: inherit;
+  font-size: 16px;
+  text-align: center;
+  border-radius: var(--radius);
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn + .btn { margin-top: 10px; }
+
+.btn-solid { background: var(--ink); color: var(--paper); }
+.btn-ghost { background: var(--paper); color: var(--ink); }
+
+.btn-dashed {
+  border-style: dashed;
+  border-color: var(--muted);
+  color: var(--ink);
+}
+
+.btn[disabled] {
+  opacity: .35;
+  cursor: default;
+}
+
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { margin-top: 0; }
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  align-self: flex-start;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Шапки экранов ------------------------------------------------------- */
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.head h2 { font-size: 20px; }
+
+/* --- Экран 1. Старт ------------------------------------------------------ */
+
+.brand { text-align: center; padding: 48px 0 40px; }
+
+.brand-word {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: .42em;
+  text-indent: .42em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.brand-names {
+  margin: 18px 0 0;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: .01em;
+  line-height: 1.2;
+}
+
+.brand-date {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.brand-rule {
+  width: 40px;
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 26px auto 0;
+}
+
+.start-actions { margin-top: 8px; }
+.start-note { text-align: center; }
+
+/* --- Поля ---------------------------------------------------------------- */
+
+.field { display: block; margin-bottom: 22px; }
+
+.label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  padding: 12px 0;
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.input:focus { outline: none; border-bottom-color: var(--line-strong); }
+.input::placeholder { color: #bbb; }
+
+/* --- Пин-код ------------------------------------------------------------- */
+
+.pin { display: flex; gap: 10px; }
+
+.pin-cell {
+  width: 100%;
+  height: 56px;
+  padding: 0;
+  font: inherit;
+  font-size: 22px;
+  text-align: center;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.pin-cell:focus { outline: none; border-color: var(--line-strong); }
+
+/* --- Экран 3. Аватар ----------------------------------------------------- */
+
+.avatars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.ava {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.ava img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ava.is-picked { border-width: 3px; border-color: var(--ink); }
+
+.own-wrap { display: flex; justify-content: center; margin-bottom: 18px; }
+.own-wrap .ava { width: 104px; }
+
+/* --- Экран подгонки фото ------------------------------------------------- */
+
+.crop-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.crop-stage canvas { display: block; width: 100%; height: 100%; }
+
+.crop-hole {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2000px rgba(0, 0, 0, .58);
+  border: 1px solid rgba(255, 255, 255, .85);
+  pointer-events: none;
+}
+
+/* --- Экран «Вход закрыт» ------------------------------------------------- */
+
+.blocked { text-align: center; padding: 80px 0 40px; }
+.blocked h2 { font-size: 22px; }
+
+/* ==========================================================================
+   ЛЕНТА
+   Лента и карточка гостя идут во всю ширину колонки: фото упирается в края,
+   поэтому отступы #app здесь гасятся отрицательным полем.
+   ========================================================================== */
+
+.screen-wide { margin: -24px -20px -40px; }
+
+/* Шапка не уезжает при прокрутке. Плашки живут в том же липком блоке,
+   иначе они уползают под шапку и их не видно. */
+.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--paper);
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-title {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-indent: .16em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.topbar-btn svg { width: 24px; height: 24px; display: block; }
+.topbar-btn.is-off { color: #c4c4c4; }
+.topbar-hole { cursor: default; }
+
+.topbar-me {
+  justify-self: end;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--paper);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.topbar-me img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* Плашка «N новых фото» */
+.newbar {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  color: var(--paper);
+  background: var(--ink);
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Плашка «Загрузка закрыта» */
+.ribbon {
+  margin: 0;
+  padding: 9px 16px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--muted);
+  background: #f4f4f4;
+  border-bottom: 1px solid var(--line);
+}
+
+.feed-count {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+/* --- Карточка фотографии ------------------------------------------------- */
+
+.feed { display: block; }
+
+.card { border-bottom: 1px solid var(--line); }
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.card-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-ava {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+.card-ava img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.card-nick {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-time {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Пропорции снимка известны заранее — место под него держится с самого начала,
+   поэтому лента не прыгает, пока фото грузится. */
+.card-shot {
+  position: relative;
+  width: 100%;
+  background: #ececec;
+  overflow: hidden;
+}
+.card-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity .18s linear;
+}
+.card-shot.is-ready img { opacity: 1; }
+.card-shot.is-ready { background: var(--paper); }
+
+/* Серые прямоугольники на месте ещё не пришедших карточек */
+.card.is-skeleton .card-shot { aspect-ratio: 4 / 5; }
+.skel {
+  background: #ececec;
+  border-radius: 3px;
+}
+.card.is-skeleton .card-ava { background: #ececec; border-color: #ececec; }
+.card.is-skeleton .skel-nick { width: 92px; height: 12px; }
+.card.is-skeleton .skel-time { width: 34px; height: 12px; margin-left: auto; }
+
+/* --- Пустая лента -------------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 80px 24px 40px;
+  color: var(--ink);
+}
+.empty-icon { width: 48px; height: 48px; color: var(--muted); }
+.empty-title { margin: 18px 0 0; font-size: 18px; }
+.empty-sub { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
+/* --- Экран загрузки ------------------------------------------------------ */
+
+.up-body { padding: 20px 16px 8px; }
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 200px;
+  padding: 28px 20px;
+  font: inherit;
+  color: var(--ink);
+  text-align: center;
+  background: var(--paper);
+  border: 1px dashed var(--muted);
+  border-radius: var(--radius);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.drop[disabled] { opacity: .35; cursor: default; }
+
+.drop-icon { width: 44px; height: 44px; margin-bottom: 6px; color: var(--muted); }
+.drop-title { font-size: 16px; }
+.drop-sub { font-size: 13px; color: var(--muted); }
+
+.up-run { margin-top: 24px; }
+
+.up-line { margin: 0; font-size: 14px; }
+
+.up-bar {
+  height: 2px;
+  margin-top: 10px;
+  background: var(--line);
+  overflow: hidden;
+}
+.up-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--ink);
+  transition: width .2s linear;
+}
+
+.up-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.up-thumb {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #ececec;
+}
+.up-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .3;
+  transition: opacity .18s linear;
+}
+.up-thumb.is-done img { opacity: 1; }
+.up-thumb.is-bad { border-color: var(--ink); }
+.up-thumb.is-bad img { opacity: .1; }
+
+.up-warn { margin-top: 16px; }
+
+.up-done { margin-top: 24px; }
+.up-result { margin: 0 0 14px; font-size: 14px; line-height: 1.4; }
+
+/* --- Карточка гостя ------------------------------------------------------ */
+
+.guest-head { text-align: center; padding: 28px 20px 0; }
+
+.guest-ava {
+  display: inline-block;
+  width: 88px;
+  height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+.guest-ava img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.guest-nick { margin: 14px 0 0; font-size: 20px; font-weight: 500; }
+.guest-since { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+
+.nums {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 24px 0 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.num { text-align: center; padding: 16px 8px; }
+.num + .num { border-left: 1px solid var(--line); }
+.num b { display: block; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.num span { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); }
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px 0 0;
+}
+
+.cell { position: relative; }
+
+.cell-shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 0;
+  background: #ececec;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cell-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.cell-del {
+  display: block;
+  width: 100%;
+  padding: 6px 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.guest-none { text-align: center; padding: 40px 20px; font-size: 14px; color: var(--muted); }
+
+/* --- Сайт закрыт --------------------------------------------------------- */
+
+.thanks {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 8px;
+}
+.thanks-word { margin: 0; font-size: 20px; line-height: 1.45; }
+
+/* --- Всплывающее сообщение ----------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: 320px;
+  padding: 11px 16px;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: var(--radius);
+}

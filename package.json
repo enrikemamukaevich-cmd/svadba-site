@@ -1,0 +1,19 @@
+{
+  "name": "svadba",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Свадебный фотосайт. Сам сайт — чистые HTML, CSS и JS без сборщиков и без зависимостей. Этот файл нужен только автопроверкам на Playwright и на сервер не уходит.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/check-etap2.cjs && node tests/check-etap3.cjs && node tests/check-etap4.cjs",
+    "test:2": "node tests/check-etap2.cjs",
+    "test:3": "node tests/check-etap3.cjs",
+    "test:4": "node tests/check-etap4.cjs",
+    "photos": "node tests/make-photos.cjs",
+    "measure": "node tests/measure.cjs",
+    "serve": "node tests/serve.cjs 8123"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
