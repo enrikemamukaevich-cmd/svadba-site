@@ -238,52 +238,27 @@
     <div class="spacer"></div>
   </section>
 
-  <!-- ===== Страница фото =================================================
-       Отдельного html-файла нет и не будет: это такой же экран внутри
-       index.html, как карточка гостя. Сюда ведут значок комментариев,
-       строка «показать все N» и нажатие на сам снимок.
+  <!-- ===== Лента одного гостя ============================================
+       Открывается нажатием на снимок в карточке гостя: те же карточки,
+       что и в общей ленте, но только этого человека и начиная с выбранного
+       снимка. «Назад» возвращает на карточку, а не в общую ленту.
   ====================================================================== -->
-  <section class="screen screen-wide" id="s-photo">
+  <section class="screen screen-wide" id="s-gfeed">
 
     <div class="sticky">
       <header class="topbar">
-        <button class="topbar-btn topbar-back" id="photo-back" type="button" aria-label="Назад">
+        <button class="topbar-btn topbar-back" id="gfeed-back" type="button" aria-label="Назад">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <p class="topbar-title">ФОТО</p>
+        <p class="topbar-title" id="gfeed-title">ФОТО ГОСТЯ</p>
         <span class="topbar-btn topbar-hole" aria-hidden="true"></span>
       </header>
     </div>
 
-    <article class="card card-solo">
-      <div class="card-top">
-        <button class="card-who" id="photo-who" type="button">
-          <span class="card-ava"><img id="photo-ava" src="" alt=""></span>
-          <b class="card-nick" id="photo-nick"></b>
-        </button>
-        <time class="card-time" id="photo-time"></time>
-      </div>
-      <div class="card-shot" id="photo-shot"><img id="photo-img" src="" alt=""></div>
-      <div id="photo-acts"></div>
-    </article>
-
-    <div class="cm-list" id="photo-list"></div>
-    <p class="cm-none" id="photo-none" hidden>Пока ни одного комментария</p>
-
-    <div class="say">
-      <div class="say-row">
-        <input class="say-input" id="say-input" type="text" maxlength="200"
-               autocomplete="off" autocapitalize="sentences" spellcheck="false"
-               placeholder="Написать комментарий">
-        <button class="say-go" id="say-go" type="button">Отправить</button>
-      </div>
-      <span class="err" id="err-say"></span>
-      <p class="note say-left" id="say-left">Осталось знаков: 200</p>
-    </div>
-
-    <div class="spacer"></div>
+    <div class="feed" id="gfeed"></div>
+    <div id="gfeed-tail"></div>
   </section>
 
   <!-- ===== Карточка гостя ================================================ -->
@@ -304,7 +279,6 @@
     <div class="guest-head">
       <span class="guest-ava"><img id="guest-face" src="" alt=""></span>
       <h2 class="guest-nick" id="guest-nick"></h2>
-      <p class="guest-since" id="guest-since"></p>
     </div>
 
     <div class="nums">
@@ -314,7 +288,12 @@
 
     <div class="grid3" id="guest-grid"></div>
     <p class="guest-none" id="guest-none" hidden>Пока ни одного снимка.</p>
+
     <div class="spacer"></div>
+    <!-- Только на своей карточке: на чужой кнопки нет вовсе -->
+    <div class="guest-exit" id="guest-exit" hidden>
+      <button class="btn btn-ghost" id="btn-exit" type="button">Выйти</button>
+    </div>
   </section>
 
   <!-- ===== Сайт закрыт =================================================== -->
@@ -325,6 +304,53 @@
   </section>
 
 </main>
+
+<!-- ===== Шторка комментариев ==============================================
+     Живёт поверх ленты, а не отдельным экраном: лента под ней остаётся
+     на месте. Тянется за пальцем — за ручку, за шапку и за список, когда тот
+     прокручен в самый верх. Двигается только transform: translateY.
+======================================================================== -->
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet-back" id="sheet-back"></div>
+
+  <section class="sheet" id="sheet-card" role="dialog" aria-label="Комментарии">
+    <div class="sheet-grab" id="sheet-grab"><span class="sheet-bar"></span></div>
+    <div class="sheet-head" id="sheet-head">
+      <p class="sheet-title" id="sheet-title">Комментарии</p>
+    </div>
+
+    <div class="sheet-list" id="sheet-list">
+      <div class="cm-list" id="cm-list"></div>
+      <p class="cm-none" id="cm-none" hidden>Пока ни одного комментария</p>
+    </div>
+
+    <div class="say">
+      <div class="say-row">
+        <input class="say-input" id="say-input" type="text" maxlength="200"
+               autocomplete="off" autocapitalize="sentences" spellcheck="false"
+               placeholder="Написать комментарий">
+        <button class="say-go" id="say-go" type="button">Отправить</button>
+      </div>
+      <span class="err" id="err-say"></span>
+      <p class="note say-left" id="say-left">Осталось знаков: 200</p>
+    </div>
+  </section>
+</div>
+
+<!-- ===== Окно подтверждения ===============================================
+     Своё, а не встроенное в браузер: у встроенного кнопки называются «ОК»
+     и «Отмена», а выход из аккаунта должен подписываться словом «Выйти».
+======================================================================== -->
+<div class="ask-wrap" id="ask" hidden>
+  <div class="ask-back" id="ask-back"></div>
+  <div class="ask" role="dialog" aria-labelledby="ask-text">
+    <p class="ask-text" id="ask-text"></p>
+    <div class="ask-row">
+      <button class="btn btn-ghost" id="ask-no" type="button">Отмена</button>
+      <button class="btn btn-solid" id="ask-yes" type="button">Выйти</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast" hidden></div>
 

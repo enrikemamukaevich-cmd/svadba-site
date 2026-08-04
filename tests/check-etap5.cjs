@@ -121,13 +121,26 @@ async function newGuestPage(ctx, guest, notes) {
   return page;
 }
 
-// Открыть страницу фото средствами самой страницы
+/* Комментарии открываются шторкой поверх ленты, отдельного экрана у них нет.
+   Зовём тем же способом, каким это делает значок комментариев. */
 function openPhotoOn(page, row) {
-  return page.evaluate(function (r) {
-    window.openPhoto(r, true);
-  }, row).then(function () {
-    return page.waitForSelector('#s-photo.is-on', { timeout: 10000 });
+  return page.evaluate(function (id) {
+    window.openSheet(id, true);
+  }, row.id).then(function () {
+    return page.waitForSelector('#sheet.is-open', { timeout: 10000 });
+  }).then(function () {
+    return page.waitForTimeout(400);           // доводка шторки
   });
+}
+
+function closeSheetOn(page) {
+  return page.evaluate(function () { window.sheetDismiss(); })
+    .then(function () {
+      // шторка прячется атрибутом hidden, а не исчезновением из разметки
+      return page.waitForFunction(function () {
+        return document.getElementById('sheet').hidden;
+      }, null, { timeout: 10000 });
+    });
 }
 
 async function sendComment(page, text) {
@@ -302,9 +315,9 @@ async function main() {
 
   var errGood = await sendComment(page, 'Какие вы красивые, поздравляем!');
   await page.waitForTimeout(500);
-  var listText = await page.textContent('#photo-list');
+  var listText = await page.textContent('#cm-list');
   var cmInDb = await (await db('comments?select=id,body,guest_id&photo_id=eq.' + PHOTO_A.id)).json();
-  var nickBold = await page.$eval('#photo-list .cm:last-child .cm-nick', function (n) {
+  var nickBold = await page.$eval('#cm-list .cm:last-child .cm-nick', function (n) {
     return { text: n.textContent, weight: getComputedStyle(n).fontWeight };
   });
 
@@ -314,8 +327,8 @@ async function main() {
      'в базе записей: ' + cmInDb.length + ', подпись «' + nickBold.text +
      '» насыщенностью ' + nickBold.weight);
 
-  // и число под фото выросло
-  var talkN = await page.textContent('#photo-acts .act-talk .act-n');
+  // и число под фото в ленте выросло
+  var talkN = await page.textContent(cardSel + ' .act-talk .act-n');
   ok('3б. Число комментариев под снимком совпадает с базой',
      Number(talkN) === cmInDb.length, 'на экране ' + talkN + ', в базе ' + cmInDb.length);
   await snap(page, '02-stranica-foto.png');
@@ -324,9 +337,9 @@ async function main() {
   var mine1 = cmInDb[0];
   var matePage = await newGuestPage(ctx, MATE, function (p) { sayYes(p); });
   await openPhotoOn(matePage, PHOTO_A);
-  await matePage.waitForSelector('#photo-list .cm', { timeout: 15000 });
+  await matePage.waitForSelector('#cm-list .cm', { timeout: 15000 });
 
-  var delShownToMate = await matePage.$$eval('#photo-list .cm-del', function (n) { return n.length; });
+  var delShownToMate = await matePage.$$eval('#cm-list .cm-del', function (n) { return n.length; });
   var mateTry = await rpcAs('delete_comment', { p_secret: MATE.secret, p_comment_id: mine1.id });
   var stillThere = await (await db('comments?select=id&id=eq.' + mine1.id)).json();
 
@@ -336,11 +349,11 @@ async function main() {
      'кнопок «Удалить» у чужого: ' + delShownToMate + ', база ответила ' + JSON.stringify(mateTry));
 
   // свой — удаляется
-  var delOk = await page.$$eval('#photo-list .cm-del', function (n) { return n.length; });
-  await page.click('#photo-list .cm:last-child .cm-del');
+  var delOk = await page.$$eval('#cm-list .cm-del', function (n) { return n.length; });
+  await page.click('#cm-list .cm:last-child .cm-del');
   await page.waitForTimeout(1500);
   var gone = await (await db('comments?select=id&id=eq.' + mine1.id)).json();
-  var listAfter = await page.textContent('#photo-list');
+  var listAfter = await page.textContent('#cm-list');
   ok('3в. Свой комментарий удаляется автором',
      delOk === 1 && gone.length === 0 && !/Какие вы красивые/.test(listAfter),
      'кнопка у себя есть: ' + (delOk === 1) + ', записей в базе осталось ' + gone.length);
@@ -432,7 +445,7 @@ async function main() {
   await feedReady(page);
   await page.waitForSelector(cardSel, { timeout: 15000 });
 
-  await page.click(cardSel + ' .act-flag');        // подтверждение принимает sayYes
+  await page.click(cardSel + ' .act-report');        // подтверждение принимает sayYes
   await page.waitForTimeout(1500);
   var afterOne = await photoState(PHOTO_A.id);
 
@@ -461,7 +474,7 @@ async function main() {
   var cardB = '#feed .card[data-id="' + PHOTO_B.id + '"]';
   await page.waitForSelector(cardB, { timeout: 15000 });
   await snap(page, '04-do-tretej-zhaloby.png');
-  await page.click(cardB + ' .act-flag');
+  await page.click(cardB + ' .act-report');
   await page.waitForTimeout(2000);
 
   var afterThree = await reportProbe(MATE.secret, PHOTO_B.id);
@@ -544,16 +557,16 @@ async function main() {
     return {
       like: !!acts.querySelector('.act-like'),
       talkBtn: !!acts.querySelector('.act-talk'),
-      flag: !!acts.querySelector('.act-flag'),
-      flagRight: acts.querySelector('.act-flag').getBoundingClientRect().right >
-                 acts.querySelector('.act-talk').getBoundingClientRect().right,
+      report: (acts.querySelector('.act-report') || {}).textContent || '',
+      reportRight: acts.querySelector('.act-report').getBoundingClientRect().right >
+                   acts.querySelector('.act-talk').getBoundingClientRect().right,
       lines: talk.querySelectorAll('.talk-line').length,
       all: (talk.querySelector('.talk-all') || {}).textContent || ''
     };
   }, PHOTO_A.id);
 
-  ok('12. Под фото: сердце, значок комментариев, флажок в углу, два последних и «показать все N»',
-     !!look && look.like && look.talkBtn && look.flag && look.flagRight &&
+  ok('12. Под фото: сердце, значок комментариев, «Пожаловаться» справа, два последних и «показать все N»',
+     !!look && look.like && look.talkBtn && look.report === 'Пожаловаться' && look.reportRight &&
      look.lines === 2 && /^Показать все \d+ коммент/.test(look.all),
      look ? ('строк комментариев ' + look.lines + ', строка «' + look.all + '»') : 'карточка не найдена');
   await snap(page, '06-lenta-s-kommentariyami.png');

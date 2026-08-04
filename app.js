@@ -38,7 +38,14 @@ var CONFIG = {
   /* --- лайки, комментарии, жалобы --- */
   CM_MAX: 200,                     // знаков в комментарии
   CM_PREVIEW: 2,                   // сколько последних видно прямо в ленте
-  REPORTS_HIDE: 3                  // на какой жалобе снимок прячется (решает база)
+  REPORTS_HIDE: 3,                 // на какой жалобе снимок прячется (решает база)
+
+  /* --- жесты --- */
+  TAP_MS: 300,                     // порог между касаниями двойного тапа
+  TAP_SLOP: 14,                    // сдвиг пальца, после которого это уже прокрутка
+  SHEET_MS: 280,                   // доводка шторки после отпускания
+  SHEET_CLOSE_PART: 0.33,          // уехала больше трети — закрывается
+  SHEET_FLING: 0.5                 // точек за миллисекунду: рывок закрывает сразу
 };
 
 var STORE_GUEST = 'svadba.guest';
@@ -1041,7 +1048,7 @@ function shotRatio(path) {
   return (w > 0 && h > 0) ? (w + ' / ' + h) : null;
 }
 
-var fmtTime = null, fmtDate = null;
+var fmtTime = null;
 
 function hhmm(iso) {
   var d = new Date(iso);
@@ -1054,19 +1061,6 @@ function hhmm(iso) {
   } catch (e) {
     var m = new Date(d.getTime() + 3 * 3600 * 1000);   // Москва без Intl
     return ('0' + m.getUTCHours()).slice(-2) + ':' + ('0' + m.getUTCMinutes()).slice(-2);
-  }
-}
-
-function longDate(iso) {
-  var d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  try {
-    if (!fmtDate) fmtDate = new Intl.DateTimeFormat('ru-RU', {
-      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow'
-    });
-    return fmtDate.format(d).replace(/\s*г\.\s*$/, '');   // «4 августа 2026 г.» → без «г.»
-  } catch (e) {
-    return d.toISOString().slice(0, 10);
   }
 }
 
@@ -1144,9 +1138,11 @@ function countPhotos(extra) {
 var PAGE_SELECT = 'id,guest_id,preview_path,created_at,' +
                   'likes(count),comments(count),last:comments(id,guest_id,body,created_at)';
 
-function fetchPage(offset, limit) {
+// guestId задаётся, когда лента показывает снимки одного человека
+function fetchPage(offset, limit, guestId) {
   return restGet('photos?select=' + PAGE_SELECT +
                  '&hidden=eq.false&order=created_at.desc,id.desc' +
+                 (guestId ? '&guest_id=eq.' + encodeURIComponent(guestId) : '') +
                  '&offset=' + offset + '&limit=' + limit +
                  '&last.order=created_at.desc&last.limit=' + CONFIG.CM_PREVIEW)
     .then(function (r) { return r.json(); });
@@ -1224,7 +1220,14 @@ function cardNode(row) {
   img.addEventListener('error', function () { shot.classList.add('is-ready'); });
   img.src = photoUrl(row.preview_path);
   shot.appendChild(img);
-  shot.addEventListener('click', function () { openPhoto(row, true); });
+
+  // большое сердце для двойного тапа: лежит здесь всегда и всегда невидимо
+  var pop = document.createElement('span');
+  pop.className = 'pop';
+  pop.appendChild(icon([D_HEART]));
+  shot.appendChild(pop);
+
+  wireDoubleTap(shot, function () { likeByTap(row.id); });
 
   card.appendChild(top);
   card.appendChild(shot);
@@ -1232,6 +1235,38 @@ function cardNode(row) {
   card.appendChild(talkNode(row));
   paintIn(card, row.id);          // карточки ещё нет в разметке — красим на месте
   return card;
+}
+
+/* Одиночный тап по фотографии не делает ничего, поэтому ждать второго касания
+   и гадать не нужно: лайк срабатывает мгновенно на втором. Отличаем тап от
+   прокрутки по сдвигу пальца — с пальцем на фото лента листается свободно
+   и случайных лайков не ставит. Зум по двойному тапу снят через touch-action
+   в оформлении. */
+function wireDoubleTap(node, onDouble) {
+  var start = null, lastAt = 0, lastX = 0, lastY = 0;
+
+  node.addEventListener('pointerdown', function (e) {
+    start = { x: e.clientX, y: e.clientY, t: Date.now() };
+  }, { passive: true });
+
+  node.addEventListener('pointercancel', function () { start = null; }, { passive: true });
+
+  node.addEventListener('pointerup', function (e) {
+    if (!start) return;
+    var moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    var held = Date.now() - start.t;
+    start = null;
+    if (moved > CONFIG.TAP_SLOP || held > 700) { lastAt = 0; return; }   // это прокрутка
+
+    var now = Date.now();
+    var near = Math.hypot(e.clientX - lastX, e.clientY - lastY) < 44;
+    if (lastAt && now - lastAt < CONFIG.TAP_MS && near) {
+      lastAt = 0;
+      onDouble();
+      return;
+    }
+    lastAt = now; lastX = e.clientX; lastY = e.clientY;
+  }, { passive: true });
 }
 
 // Серые прямоугольники на время загрузки очередной порции
@@ -1252,26 +1287,40 @@ function skeletonNode() {
    Лента: состояние и подгрузка
    -------------------------------------------------------------------------- */
 
-var feed = {
-  offset: 0,
-  done: false,
-  busy: false,
-  newest: null,     // время самого свежего показанного снимка
-  waiting: 0,       // сколько новых чужих снимков ждёт за плашкой
-  scrollY: 0,       // где оставили ленту, уходя на карточку гостя
-  watcher: null,
-  poller: null
-};
+/* Лент две: общая и лента одного гостя, которая открывается с его карточки.
+   Карточки, подгрузка и наблюдатель у них общие, поэтому состояние вынесено
+   в отдельный объект, а не разложено по переменным. */
+function makeFeed(listId, tailId) {
+  return {
+    listId: listId,
+    tailId: tailId,
+    guestId: null,    // не пусто — показываем снимки только этого гостя
+    base: 0,          // с какого места в его списке начинаем
+    offset: 0,
+    done: false,
+    busy: false,
+    newest: null,     // время самого свежего показанного снимка
+    waiting: 0,       // сколько новых чужих снимков ждёт за плашкой
+    scrollY: 0,       // где оставили ленту, уходя на карточку гостя
+    watcher: null,
+    poller: null
+  };
+}
 
-function feedReset() {
-  feed.offset = 0;
-  feed.done = false;
-  feed.busy = false;
-  feed.newest = null;
-  feed.waiting = 0;
-  el('feed').innerHTML = '';
-  el('feed-empty').hidden = true;
-  el('newbar').hidden = true;
+var feed = makeFeed('feed', 'feed-tail');        // общая
+var gfeed = makeFeed('gfeed', 'gfeed-tail');     // одного гостя
+
+function feedReset(f) {
+  f.offset = 0;
+  f.done = false;
+  f.busy = false;
+  f.newest = null;
+  f.waiting = 0;
+  el(f.listId).innerHTML = '';
+  if (f === feed) {
+    el('feed-empty').hidden = true;
+    el('newbar').hidden = true;
+  }
 }
 
 function feedRefreshCount() {
@@ -1284,15 +1333,16 @@ function feedRefreshCount() {
   });
 }
 
-function feedMore() {
-  if (feed.busy || feed.done) return Promise.resolve();
-  feed.busy = true;
+function feedMore(f) {
+  f = f || feed;
+  if (f.busy || f.done) return Promise.resolve();
+  f.busy = true;
 
-  var list = el('feed');
+  var list = el(f.listId);
   var skels = [];
   for (var i = 0; i < 3; i++) { var s = skeletonNode(); skels.push(s); list.appendChild(s); }
 
-  return fetchPage(feed.offset, CONFIG.PAGE).then(function (rows) {
+  return fetchPage(f.base + f.offset, CONFIG.PAGE, f.guestId).then(function (rows) {
     rows = rows || [];
     absorbStats(rows);
     /* Свои лайки — отдельный вызов: их не спросишь, не показав ключ гостя,
@@ -1308,30 +1358,32 @@ function feedMore() {
 
     rows.forEach(function (row) {
       list.appendChild(cardNode(row));
-      if (!feed.newest || row.created_at > feed.newest) feed.newest = row.created_at;
+      if (!f.newest || row.created_at > f.newest) f.newest = row.created_at;
     });
 
-    feed.offset += rows.length;
-    if (rows.length < CONFIG.PAGE) feed.done = true;
-    feed.busy = false;
+    f.offset += rows.length;
+    if (rows.length < CONFIG.PAGE) f.done = true;
+    f.busy = false;
 
-    el('feed-empty').hidden = !(feed.offset === 0 && feed.done);
+    if (f === feed) el('feed-empty').hidden = !(f.offset === 0 && f.done);
 
     // экран высокий, а порция короткая — досыпаем, пока не появится прокрутка
-    if (!feed.done && document.body.scrollHeight <= window.innerHeight + 40) return feedMore();
+    if (!f.done && document.body.scrollHeight <= window.innerHeight + 40) return feedMore(f);
   }).catch(function () {
     skels.forEach(function (s) { s.remove(); });
-    feed.busy = false;
-    el('feed-count').textContent = 'Лента не загрузилась. Потяните вниз и обновите страницу.';
+    f.busy = false;
+    if (f === feed) el('feed-count').textContent = 'Лента не загрузилась. Потяните вниз и обновите страницу.';
+    else toast('Не получилось загрузить фото гостя');
   });
 }
 
-function feedWatch() {
-  if (feed.watcher || !('IntersectionObserver' in window)) return;
-  feed.watcher = new IntersectionObserver(function (entries) {
-    if (entries.some(function (e) { return e.isIntersecting; })) feedMore();
+function feedWatch(f) {
+  f = f || feed;
+  if (f.watcher || !('IntersectionObserver' in window)) return;
+  f.watcher = new IntersectionObserver(function (entries) {
+    if (entries.some(function (e) { return e.isIntersecting; })) feedMore(f);
   }, { rootMargin: '400px 0px' });
-  feed.watcher.observe(el('feed-tail'));
+  f.watcher.observe(el(f.tailId));
 }
 
 /* Новые чужие снимки сами не появляются — сверху всплывает плашка. */
@@ -1356,9 +1408,9 @@ function pollNew() {
 }
 
 function feedReload() {
-  feedReset();
+  feedReset(feed);
   feedRefreshCount();
-  return feedMore().then(function () { window.scrollTo(0, 0); });
+  return feedMore(feed).then(function () { window.scrollTo(0, 0); });
 }
 
 /* Только что отправленный снимок встаёт в начало ленты сам, без перечитывания
@@ -1398,7 +1450,7 @@ function enterFeed(g) {
   loadGuests().then(function () {
     return feedReload();
   }).then(function () {
-    feedWatch();
+    feedWatch(feed);
     if (!feed.poller) feed.poller = setInterval(pollNew, CONFIG.POLL_MS);
   });
 }
@@ -1447,17 +1499,17 @@ function fillGuestHead(g, mine) {
   el('guest-face').src = avatarUrl(g.avatar_kind, g.avatar_value);
   el('guest-face').alt = '';
   el('guest-nick').textContent = g.nick;
-  el('guest-since').textContent = g.created_at ? ('с нами с ' + longDate(g.created_at)) : '';
 }
 
 /* Чья карточка открыта прямо сейчас. Пока идут запросы, гость успевает
    открыть другую — опоздавший ответ не должен затирать свежую. */
 var shownGuest = null;
+var guestScrollY = 0;             // где оставили карточку, уходя в ленту гостя
+var guestShots = {};              // id гостя → его снимки по порядку
 
 function openGuest(id, push) {
   var mine = !!(me && me.id === id);
   shownGuest = id;
-  shownPhoto = null;
 
   fillGuestHead(guestOf(id), mine);
   // гость мог зарегистрироваться уже после того, как мы прочитали витрину
@@ -1467,6 +1519,7 @@ function openGuest(id, push) {
   el('guest-likes').textContent = '—';
   el('guest-grid').innerHTML = '';
   el('guest-none').hidden = true;
+  el('guest-exit').hidden = !mine;      // на чужой карточке выхода нет вовсе
 
   // куда вернуть ленту, когда гость нажмёт «назад»
   if (el('s-feed').classList.contains('is-on')) feed.scrollY = window.scrollY;
@@ -1482,6 +1535,7 @@ function openGuest(id, push) {
     .then(function (rows) {
       if (shownGuest !== id) return null;
       rows = rows || [];
+      guestShots[id] = rows;
       el('guest-photos').textContent = rows.length;
       el('guest-none').hidden = rows.length > 0;
 
@@ -1499,6 +1553,47 @@ function openGuest(id, push) {
     });
 }
 
+/* --------------------------------------------------------------------------
+   Лента одного гостя
+
+   Открывается снимком в его карточке. Порядок тот же, что в общей ленте,
+   но фотографии только этого человека и начиная с выбранной: место выбранной
+   в его списке и есть начало ленты. Лайки, комментарии и жалобы работают
+   ровно так же — карточки собирает тот же cardNode.
+   -------------------------------------------------------------------------- */
+
+function openGuestFeed(guestId, photoId, push) {
+  var list = guestShots[guestId] || [];
+  var at = 0;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === photoId) { at = i; break; }
+  }
+
+  if (el('s-guest').classList.contains('is-on')) guestScrollY = window.scrollY;
+
+  gfeed.guestId = guestId;
+  gfeed.base = at;
+  feedReset(gfeed);
+
+  el('gfeed-title').textContent = guestOf(guestId).nick;
+  show('s-gfeed');
+  if (push) {
+    try {
+      history.pushState({ gfeed: guestId, photo: photoId }, '', location.href);
+    } catch (e) { /* переживём */ }
+  }
+
+  feedMore(gfeed).then(function () {
+    window.scrollTo(0, 0);
+    feedWatch(gfeed);
+  });
+}
+
+function backToGuest() {
+  show('s-guest');
+  window.scrollTo(0, guestScrollY || 0);
+}
+
 function cellNode(row, mine) {
   photoRow[row.id] = row;
 
@@ -1513,7 +1608,8 @@ function cellNode(row, mine) {
   img.alt = '';
   img.loading = 'lazy';
   shot.appendChild(img);
-  shot.addEventListener('click', function () { openPhoto(row, true); });
+  // с карточки открывается лента только этого гостя, начиная с этого снимка
+  shot.addEventListener('click', function () { openGuestFeed(row.guest_id, row.id, true); });
   cell.appendChild(shot);
 
   // Удалять можно только у себя. На чужой карточке кнопки нет вовсе.
@@ -1550,11 +1646,54 @@ function askDelete(photoId, cell) {
 }
 
 function backToFeed() {
-  shownPhoto = null;
   shownGuest = null;
   show('s-feed');
   // лента возвращается туда же, где её оставили, а не в начало
   window.scrollTo(0, feed.scrollY || 0);
+}
+
+/* --------------------------------------------------------------------------
+   Выход из аккаунта
+
+   Стирается только память браузера. Ничего из базы не удаляется: фотографии,
+   лайки и комментарии остаются на местах, вернуться можно ником и пином.
+   -------------------------------------------------------------------------- */
+
+var askDone = null;
+
+/* Своё окно вместо window.confirm: у встроенного кнопки называются «ОК»
+   и «Отмена», а здесь на кнопке должно стоять слово «Выйти». */
+function ask(text, yesLabel, onYes) {
+  el('ask-text').textContent = text;
+  el('ask-yes').textContent = yesLabel;
+  askDone = onYes;
+  el('ask').hidden = false;
+}
+
+function askClose(yes) {
+  el('ask').hidden = true;
+  var fn = askDone;
+  askDone = null;
+  if (yes && fn) fn();
+}
+
+function tapExit() {
+  ask('Выйти из аккаунта? Чтобы вернуться, понадобится ваш ник и пин-код. ' +
+      'Восстановить пин нельзя.', 'Выйти', doExit);
+}
+
+function doExit() {
+  forgetGuest();
+  saveLoginState({ fails: 0, until: 0 });
+  me = null;
+  shownGuest = null;
+  guestShots = {};
+  if (feed.poller) { clearInterval(feed.poller); feed.poller = null; }
+  feedReset(feed);
+  feedReset(gfeed);
+  try { history.replaceState(null, '', location.href); } catch (e) { /* переживём */ }
+  refreshLogin();
+  startScreen();
 }
 
 /* ==========================================================================
@@ -1568,7 +1707,7 @@ function backToFeed() {
 
 var stats = {};    // photo_id → { likes, comments, last: [последние комментарии] }
 var liked = {};    // photo_id → лайкнул ли этот гость
-var photoRow = {}; // photo_id → строка снимка, чтобы не перечитывать её ради экрана фото
+var photoRow = {}; // photo_id → строка снимка: по ней открывается лента гостя
 
 function cardCount(box) {
   return (box && box[0] && typeof box[0].count === 'number') ? box[0].count : 0;
@@ -1657,22 +1796,19 @@ function icon(paths, extra) {
 var D_HEART = 'M12 20.2C7.5 16.9 4 14.2 4 10.6 4 8.1 5.9 6.2 8.3 6.2c1.5 0 2.9.7 3.7 1.9' +
               '.8-1.2 2.2-1.9 3.7-1.9 2.4 0 4.3 1.9 4.3 4.4 0 3.6-3.5 6.3-8 9.6z';
 var D_TALK = 'M20 12.5c0 3.6-3.6 6.5-8 6.5-.9 0-1.8-.1-2.6-.4L5 20l1.1-3.1C4.8 15.7 4 14.2 4 12.5 4 8.9 7.6 6 12 6s8 2.9 8 6.5z';
-var D_FLAG = 'M6 20V5m0 0h11l-2 3.2L17 11.5H6';
 
 /* --------------------------------------------------------------------------
    Строка действий под снимком
    -------------------------------------------------------------------------- */
 
-function actNode(kind, withNumber) {
+function actNode(kind) {
   var b = document.createElement('button');
   b.className = 'act act-' + kind;
   b.type = 'button';
-  b.appendChild(icon([kind === 'like' ? D_HEART : kind === 'talk' ? D_TALK : D_FLAG]));
-  if (withNumber) {
-    var n = document.createElement('span');
-    n.className = 'act-n';
-    b.appendChild(n);
-  }
+  b.appendChild(icon([kind === 'like' ? D_HEART : D_TALK]));
+  var n = document.createElement('span');
+  n.className = 'act-n';
+  b.appendChild(n);
   return b;
 }
 
@@ -1681,21 +1817,25 @@ function actsNode(row) {
   wrap.className = 'acts';
   wrap.dataset.id = row.id;
 
-  var like = actNode('like', true);
+  var like = actNode('like');
   like.setAttribute('aria-label', 'Нравится');
   like.addEventListener('click', function () { tapLike(row.id); });
 
-  var talk = actNode('talk', true);
+  var talk = actNode('talk');
   talk.setAttribute('aria-label', 'Комментарии');
-  talk.addEventListener('click', function () { openPhoto(row, true); });
+  talk.addEventListener('click', function () { openSheet(row.id, true); });
 
-  var flag = actNode('flag', false);
-  flag.setAttribute('aria-label', 'Пожаловаться');
-  flag.addEventListener('click', function () { tapReport(row.id); });
+  // Жалоба — обычная текстовая кнопка справа, а не значок: в значок
+  // пальцем не попасть, а слово читается без догадок.
+  var report = document.createElement('button');
+  report.className = 'act-report';
+  report.type = 'button';
+  report.textContent = 'Пожаловаться';
+  report.addEventListener('click', function () { tapReport(row.id); });
 
   wrap.appendChild(like);
   wrap.appendChild(talk);
-  wrap.appendChild(flag);
+  wrap.appendChild(report);
   return wrap;
 }
 
@@ -1729,7 +1869,7 @@ function fillTalk(box, id) {
     more.className = 'talk-all';
     more.type = 'button';
     more.textContent = 'Показать все ' + s.comments + ' ' + cmWord(s.comments);
-    more.addEventListener('click', function () { openPhoto(photoRow[id] || { id: id }, true); });
+    more.addEventListener('click', function () { openSheet(id, true); });
     box.appendChild(more);
   }
 
@@ -1778,6 +1918,7 @@ function tapLike(id) {
   liked[id] = !wasLiked;
   s.likes = Math.max(0, wasN + (wasLiked ? -1 : 1));
   paintPhoto(id);
+  if (!wasLiked) bumpHeart(id);
 
   rpc('toggle_like', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
     if (!res || res.ok !== true) throw new Error((res && res.error) || 'отказ');
@@ -1789,6 +1930,34 @@ function tapLike(id) {
     s.likes = wasN;
     paintPhoto(id);
     toast('Лайк не сохранился');
+  });
+}
+
+/* Двойной тап только ставит лайк и никогда его не снимает: снять можно
+   сердцем в строке действий. Так в инстаграме, и так безопаснее — случайный
+   второй двойной тап не отнимет у автора лайк. Анимацию показываем в любом
+   случае, даже если фото уже нравится: палец должен получить отклик. */
+function likeByTap(id) {
+  popHeart(id);
+  if (liked[id]) return;
+  tapLike(id);
+}
+
+// Крупное сердце по центру снимка
+function popHeart(id) {
+  all('.card[data-id="' + id + '"] .pop').forEach(function (pop) {
+    pop.classList.remove('is-pop');
+    void pop.offsetWidth;              // перезапуск анимации при частых тапах
+    pop.classList.add('is-pop');
+  });
+}
+
+// Короткий подскок сердца в строке действий
+function bumpHeart(id) {
+  all('.acts[data-id="' + id + '"] .act-like').forEach(function (b) {
+    b.classList.remove('is-bump');
+    void b.offsetWidth;
+    b.classList.add('is-bump');
   });
 }
 
@@ -1813,10 +1982,14 @@ function tapReport(id) {
 
 // Снимок скрыт — убираем его с глаз, не перезагружая ленту
 function dropPhoto(id) {
-  if (shownPhoto === id) history.back();
-  all('.card[data-id="' + id + '"]').forEach(function (card) {
+  if (sheet.photoId === id) sheetDismiss();
+  all('#feed .card[data-id="' + id + '"]').forEach(function (card) {
     card.remove();
     if (feed.offset > 0) feed.offset -= 1;
+  });
+  all('#gfeed .card[data-id="' + id + '"]').forEach(function (card) {
+    card.remove();
+    if (gfeed.offset > 0) gfeed.offset -= 1;
   });
   all('.cell[data-id="' + id + '"]').forEach(function (cell) {
     cell.remove();
@@ -1825,63 +1998,278 @@ function dropPhoto(id) {
   });
 }
 
-/* --------------------------------------------------------------------------
-   Страница фото: снимок целиком, все комментарии и поле ввода
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   ШТОРКА КОММЕНТАРИЕВ
 
-var shownPhoto = null;
+   Отдельного экрана комментариев больше нет: они выезжают снизу поверх ленты,
+   а лента под ними остаётся на месте. Всё движение — только translateY:
+   ни top, ни height, ни margin здесь не трогаются, иначе браузер пересчитывает
+   разметку на каждый кадр и на слабых телефонах шторка дёргается.
+   ========================================================================== */
 
-function openPhoto(row, push) {
-  if (!row || !row.id) return;
-  if (photoRow[row.id]) row = photoRow[row.id];
-  else if (row.preview_path) photoRow[row.id] = row;
+var sheet = {
+  photoId: null,
+  open: false,
+  pushed: false,     // положили ли мы запись в историю переходов
+  backPending: false,// сами попросили браузер вернуться и ждём его ответа
+  h: 0,              // высота шторки в точках, считается при открытии
+  y: 0,              // на сколько шторка уехала вниз прямо сейчас
+  drag: null,        // состояние перетаскивания
+  frame: 0,          // номер запрошенного кадра
+  lockY: 0           // где стояла лента, когда шторку открыли
+};
 
-  shownPhoto = row.id;
+function sheetEl() { return el('sheet-card'); }
 
-  // куда вернуться по кнопке «назад»
-  if (el('s-feed').classList.contains('is-on')) feed.scrollY = window.scrollY;
+/* Пока шторка открыта, лента под ней стоит на месте: без этого палец
+   у края шторки прокручивает не список, а ленту, а на айфоне страница
+   ещё и оттягивается вниз. */
+/* Запирается лента один раз. Если шторку закрыли и тут же открыли снова,
+   старое смещение ещё не вернули — и запомнить сейчас можно только ноль,
+   после чего лента при закрытии прыгнет в начало. */
+function lockPage() {
+  if (document.body.classList.contains('is-locked')) return;
+  sheet.lockY = window.scrollY;
+  document.body.style.top = (-sheet.lockY) + 'px';
+  document.body.classList.add('is-locked');
+}
 
-  var g = guestOf(row.guest_id);
-  el('photo-ava').src = avatarUrl(g.avatar_kind, g.avatar_value);
-  el('photo-nick').textContent = g.nick;
-  el('photo-time').textContent = hhmm(row.created_at);
-  el('photo-time').dateTime = row.created_at || '';
+function unlockPage() {
+  document.body.classList.remove('is-locked');
+  document.body.style.top = '';
+  window.scrollTo(0, sheet.lockY || 0);
+}
 
-  var shot = el('photo-shot');
-  shot.classList.remove('is-ready');
-  shot.style.aspectRatio = shotRatio(row.preview_path) || '4 / 5';
-  var img = el('photo-img');
-  img.alt = 'Снимок гостя ' + g.nick;
-  img.onload = img.onerror = function () { shot.classList.add('is-ready'); };
-  img.src = row.preview_path ? photoUrl(row.preview_path) : '';
-  // снимок мог уже лежать в памяти браузера — тогда onload не сработает
-  if (img.complete) shot.classList.add('is-ready');
+function openSheet(photoId, push) {
+  if (!photoId) return;
+  sheet.photoId = photoId;
+  sheet.open = true;
 
-  var actsBox = el('photo-acts');
-  actsBox.innerHTML = '';
-  actsBox.appendChild(actsNode(row));
-
-  el('photo-list').innerHTML = '';
-  el('photo-none').hidden = true;
+  el('cm-list').innerHTML = '';
+  el('cm-none').hidden = true;
+  el('cm-none').textContent = 'Пока ни одного комментария';
   el('say-input').value = '';
   setErr('err-say', '');
   sayLeft();
 
-  show('s-photo');
+  var wrap = el('sheet');
+  wrap.hidden = false;
+  lockPage();
+
+  /* Высота нужна для порога закрытия; читаем после того, как шторка в разметке.
+     Открытие ведёт CSS: ставим шторку вниз без плавности, заставляем браузер
+     пересчитать разметку — и отпускаем. Кадр отрисовки для этого не нужен,
+     а значит открытие не зависит от того, рисует ли браузер страницу прямо
+     сейчас. Дальше всем распоряжается класс is-open. */
+  var card = sheetEl();
+  sheet.h = card.getBoundingClientRect().height || Math.round(window.innerHeight * 0.85);
+  card.style.transition = 'none';
+  card.style.transform = 'translateY(' + sheet.h + 'px)';
+  void card.offsetWidth;
+  card.style.transition = '';
+  card.style.transform = '';
+  sheet.y = 0;
+  wrap.classList.add('is-open');
+
   if (push) {
-    try { history.pushState({ photo: row.id }, '', location.href); } catch (e) { /* переживём */ }
+    sheet.pushed = true;
+    try { history.pushState({ sheet: photoId }, '', location.href); } catch (e) { sheet.pushed = false; }
   }
 
-  el('photo-who').onclick = function () { openGuest(row.guest_id, true); };
-
-  paintPhoto(row.id);
-  // из карточки гостя снимок открывается, минуя ленту: про его лайки мы ещё
-  // ничего не знаем, поэтому один раз дочитываем
-  var known = (row.id in liked);
-  var ready = known ? Promise.resolve() : loadStats([row.id]);
-  ready.then(function () { if (shownPhoto === row.id) paintPhoto(row.id); });
-  loadComments(row.id);
+  // из карточки гостя снимок мог открыться мимо ленты — тогда про лайки
+  // мы ещё ничего не знаем и один раз дочитываем
+  if (!(photoId in liked)) loadStats([photoId]).then(function () { paintPhoto(photoId); });
+  loadComments(photoId);
 }
+
+/* Пользователь закрывает шторку сам: анимация идёт сразу, история догоняет.
+   Браузер отвечает на history.back() не тут же, а следующим событием, и за
+   это время шторку успевают открыть заново — например, ткнув в соседнее фото.
+   Поэтому свой возврат помечаем: пришедшее событие закрывать уже нечего. */
+function sheetDismiss() {
+  if (!sheet.open) return;
+  sheetHide();
+  if (sheet.pushed) {
+    sheet.pushed = false;
+    sheet.backPending = true;
+    history.back();
+  }
+}
+
+function sheetHide() {
+  if (!sheet.open) return;
+  sheet.open = false;
+  sheet.photoId = null;
+
+  var wrap = el('sheet');
+  wrap.classList.remove('is-open', 'is-dragging');
+  // убираем свой transform и отдаём закрытие тому же классу: без is-open
+  // шторка уезжает на свою высоту вниз, и делает это плавно
+  if (sheet.frame) { cancelAnimationFrame(sheet.frame); sheet.frame = 0; }
+  sheetEl().style.transform = '';
+  sheet.y = sheet.h;
+
+  var input = el('say-input');
+  if (input) input.blur();
+
+  setTimeout(function () {
+    if (sheet.open) return;            // успели открыть заново
+    wrap.hidden = true;
+    unlockPage();
+  }, CONFIG.SHEET_MS);
+}
+
+/* Единственное место, где шторка двигается пальцем. Обращения идут через кадр
+   отрисовки: за один кадр transform ставится один раз, сколько бы событий
+   перемещения ни пришло. */
+function sheetMove(y) {
+  sheet.y = y;
+  if (sheet.frame) return;
+  sheet.frame = requestAnimationFrame(function () {
+    sheet.frame = 0;
+    sheetEl().style.transform = 'translateY(' + sheet.y + 'px)';
+  });
+}
+
+/* --------------------------------------------------------------------------
+   Перетаскивание. Тянуть можно за ручку, за шапку и за список — но список
+   отдаёт жест только пока прокручен в самый верх, иначе палец листает его.
+   -------------------------------------------------------------------------- */
+
+function wireSheetDrag() {
+  var wrap = el('sheet');
+  var card = sheetEl();
+  var list = el('sheet-list');
+
+  function startsHere(target) {
+    return el('sheet-grab').contains(target) || el('sheet-head').contains(target) ||
+           list.contains(target);
+  }
+
+  card.addEventListener('pointerdown', function (e) {
+    if (!sheet.open || e.button) return;
+    if (!startsHere(e.target)) return;
+    // с поля ввода и кнопок жест не начинаем: там свои дела
+    if (e.target.closest && e.target.closest('.say')) return;
+
+    sheet.drag = {
+      id: e.pointerId,
+      y0: e.clientY,
+      fromList: list.contains(e.target),
+      atTop: list.scrollTop <= 0,
+      active: false,
+      marks: [{ y: e.clientY, t: performance.now() }]
+    };
+  }, { passive: true });
+
+  /* Перемещение и отпускание слушаем на окне, а не на самой шторке.
+     Шторка уезжает вниз вместе с пальцем и выходит у него из-под низа,
+     после чего события до неё просто не доходят и жест обрывается на первых
+     же точках. Окно получает их всегда, чем бы шторка ни двигалась. */
+  window.addEventListener('pointermove', function (e) {
+    var d = sheet.drag;
+    if (!d || e.pointerId !== d.id) return;
+
+    var dy = e.clientY - d.y0;
+
+    if (!d.active) {
+      // из списка жест забираем, только если он и правда стоит наверху
+      if (d.fromList && !(d.atTop && list.scrollTop <= 0)) { sheet.drag = null; return; }
+      if (dy <= 2) return;                      // вверх шторка не тянется
+      /* Точку отсчёта не сдвигаем: смещение шторки должно совпадать
+         со смещением пальца ровно, а не отставать на порог распознавания. */
+      d.active = true;
+      wrap.classList.add('is-dragging');        // плавность снимаем целиком
+    }
+
+    if (dy < 0) dy = 0;                         // выше открытого положения не пускаем
+    d.marks.push({ y: e.clientY, t: performance.now() });
+    if (d.marks.length > 6) d.marks.shift();
+    sheetMove(dy);
+  }, { passive: true });
+
+  /* Жест мог не закончиться, а оборваться: браузер забрал его себе, пришёл
+     звонок, палец ушёл за край. Это не решение гостя закрыть шторку, поэтому
+     ни скорость, ни путь тут не считаются — шторка просто возвращается. */
+  function cancel(e) {
+    var d = sheet.drag;
+    if (!d || (e && e.pointerId !== d.id)) return;
+    sheet.drag = null;
+    if (!d.active) return;
+    wrap.classList.remove('is-dragging');
+    sheetMove(0);
+  }
+
+  function finish(e) {
+    var d = sheet.drag;
+    if (!d || (e && e.pointerId !== d.id)) return;
+    sheet.drag = null;
+    if (!d.active) return;
+
+    wrap.classList.remove('is-dragging');
+
+    /* Скорость последних миллисекунд движения. Быстрый рывок вниз закрывает
+       шторку, даже если она уехала совсем чуть-чуть; медленное движение
+       решается по пройденному пути. */
+    var last = d.marks[d.marks.length - 1];
+    var first = d.marks[0];
+    for (var i = d.marks.length - 1; i >= 0; i--) {
+      if (last.t - d.marks[i].t > 120) break;
+      first = d.marks[i];
+    }
+    var dt = Math.max(1, last.t - first.t);
+    var v = (last.y - first.y) / dt;
+
+    /* Палец мог быстро увести шторку, замереть и только потом отпустить —
+       это уже не рывок, а осознанная остановка. Свежих отсчётов нет, значит
+       и скорости нет: решает пройденный путь. */
+    if (performance.now() - last.t > 120) v = 0;
+
+    var far = sheet.y > (sheet.h || window.innerHeight) * CONFIG.SHEET_CLOSE_PART;
+    if (v > CONFIG.SHEET_FLING || far) sheetDismiss();
+    else sheetMove(0);
+  }
+
+  window.addEventListener('pointerup', finish, { passive: true });
+  window.addEventListener('pointercancel', cancel, { passive: true });
+
+  /* Мышью медленное движение с зажатой кнопкой браузер принимает за
+     перетаскивание содержимого: начинается своё, встроенное, а наш жест
+     обрывается на первых же точках. Из шторки перетаскивать нечего —
+     запрещаем целиком. */
+  card.addEventListener('dragstart', function (e) { e.preventDefault(); });
+
+  /* Единственное место, где прокрутка отменяется руками, — поэтому только
+     здесь слушатель не passive. Пока шторку тянут, список под пальцем
+     листаться не должен. */
+  window.addEventListener('touchmove', function (e) {
+    if (sheet.drag && sheet.drag.active && e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  el('sheet-back').addEventListener('click', function () { sheetDismiss(); });
+}
+
+/* Клавиатура на айфоне не двигает разметку, а лишь ужимает видимую часть
+   экрана. Без этого поле ввода остаётся под клавиатурой — обычная поломка
+   шторок. Следим за видимой частью и подставляем шторке отступ снизу. */
+function wireKeyboard() {
+  var vv = window.visualViewport;
+  if (!vv) return;
+
+  function fit() {
+    if (!sheet.open) { sheetEl().style.bottom = ''; sheetEl().style.maxHeight = ''; return; }
+    var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    sheetEl().style.bottom = kb + 'px';
+    sheetEl().style.maxHeight = Math.round(vv.height - 8) + 'px';
+  }
+
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+}
+
+/* --------------------------------------------------------------------------
+   Список комментариев
+   -------------------------------------------------------------------------- */
 
 // Весь список комментариев к снимку — одним запросом
 function loadComments(id) {
@@ -1889,39 +2277,63 @@ function loadComments(id) {
                  encodeURIComponent(id) + '&order=created_at.asc')
     .then(function (r) { return r.json(); })
     .then(function (rows) {
-      if (shownPhoto !== id) return;
+      if (sheet.photoId !== id) return;
       rows = rows || [];
       var s = statOf(id);
       s.comments = rows.length;
       s.last = rows.slice(-CONFIG.CM_PREVIEW).reverse();
       return ensureGuests(rows).then(function () {
-        if (shownPhoto !== id) return;
+        if (sheet.photoId !== id) return;
         drawComments(id, rows);
         paintPhoto(id);
       });
     })
     .catch(function () {
-      if (shownPhoto === id) el('photo-none').textContent = 'Комментарии не загрузились';
+      if (sheet.photoId === id) {
+        el('cm-none').textContent = 'Комментарии не загрузились';
+        el('cm-none').hidden = false;
+      }
     });
 }
 
 function drawComments(id, rows) {
-  var box = el('photo-list');
+  var box = el('cm-list');
   box.innerHTML = '';
   rows.forEach(function (c) { box.appendChild(commentNode(id, c)); });
-  el('photo-none').hidden = rows.length > 0;
+  el('cm-none').hidden = rows.length > 0;
 }
 
 function commentNode(photoId, c) {
+  var g = guestOf(c.guest_id);
+
   var wrap = document.createElement('div');
   wrap.className = 'cm';
   wrap.dataset.id = c.id;
 
+  /* Аватарка и ник ведут на карточку автора. Шторка при этом закрывается:
+     иначе карточка гостя окажется под ней. */
+  function toGuest() { sheetToGuest(c.guest_id); }
+
+  var face = document.createElement('button');
+  face.className = 'cm-face';
+  face.type = 'button';
+  face.setAttribute('aria-label', 'Карточка гостя ' + g.nick);
+  var faceImg = document.createElement('img');
+  faceImg.src = avatarUrl(g.avatar_kind, g.avatar_value);   // нет своей — встанет заглушка
+  faceImg.alt = '';
+  face.appendChild(faceImg);
+  face.addEventListener('click', toGuest);
+
+  var main = document.createElement('div');
+  main.className = 'cm-main';
+
   var body = document.createElement('p');
   body.className = 'cm-body';
-  var nick = document.createElement('b');
+  var nick = document.createElement('button');
   nick.className = 'cm-nick';
-  nick.textContent = nickOf(c.guest_id);
+  nick.type = 'button';
+  nick.textContent = g.nick;
+  nick.addEventListener('click', toGuest);
   body.appendChild(nick);
   body.appendChild(document.createTextNode(' ' + c.body));
 
@@ -1943,9 +2355,26 @@ function commentNode(photoId, c) {
     foot.appendChild(del);
   }
 
-  wrap.appendChild(body);
-  wrap.appendChild(foot);
+  main.appendChild(body);
+  main.appendChild(foot);
+  wrap.appendChild(face);
+  wrap.appendChild(main);
   return wrap;
+}
+
+/* Со шторки — на карточку гостя. Запись шторки в истории переходов заменяем
+   записью карточки, а не добавляем поверх: иначе «назад» с карточки вернуло бы
+   шторку, которой на экране уже нет. */
+function sheetToGuest(guestId) {
+  var pushed = sheet.pushed;
+  sheet.pushed = false;
+  sheetHide();
+  if (pushed) {
+    try { history.replaceState({ guest: guestId }, '', location.href); } catch (e) { /* переживём */ }
+    openGuest(guestId, false);
+  } else {
+    openGuest(guestId, true);
+  }
 }
 
 function askDeleteComment(photoId, commentId, node) {
@@ -1958,7 +2387,7 @@ function askDeleteComment(photoId, commentId, node) {
     var s = statOf(photoId);
     s.comments = Math.max(0, s.comments - 1);
     s.last = s.last.filter(function (c) { return c.id !== commentId; });
-    el('photo-none').hidden = s.comments > 0;
+    el('cm-none').hidden = s.comments > 0;
     paintPhoto(photoId);
     toast('Комментарий удалён');
   }).catch(function () {
@@ -1975,7 +2404,7 @@ function saySend() {
   if (siteState() === 'closed') { applyState(); return; }
   setErr('err-say', '');
 
-  var id = shownPhoto;
+  var id = sheet.photoId;
   if (!id) return;
   var body = el('say-input').value;
 
@@ -2007,13 +2436,16 @@ function saySend() {
       }
       el('say-input').value = '';
       sayLeft();
-      if (shownPhoto === id && c) {
-        el('photo-list').appendChild(commentNode(id, c));
-        el('photo-none').hidden = true;
+      if (sheet.photoId === id && c) {
+        var box = el('cm-list');
+        box.appendChild(commentNode(id, c));
+        el('cm-none').hidden = true;
         var s = statOf(id);
         s.comments += 1;
         s.last = [c].concat(s.last).slice(0, CONFIG.CM_PREVIEW);
         paintPhoto(id);
+        // свой свежий комментарий должен быть виден, а не остаться за краем
+        el('sheet-list').scrollTop = el('sheet-list').scrollHeight;
       }
     })
     .catch(function () {
@@ -2485,23 +2917,46 @@ function init() {
   el('up-back').addEventListener('click', function () { history.back(); });
   el('up-tofeed').addEventListener('click', function () { history.back(); });
 
-  // --- страница фото ---
-  el('photo-back').addEventListener('click', function () { history.back(); });
+  // --- шторка комментариев ---
+  wireSheetDrag();
+  wireKeyboard();
   el('say-go').addEventListener('click', saySend);
   el('say-input').addEventListener('input', sayLeft);
   el('say-input').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); saySend(); }
   });
 
-  // возврат кнопкой браузера и жестом «назад» на айфоне
+  // --- лента гостя и выход ---
+  el('gfeed-back').addEventListener('click', function () { history.back(); });
+  el('btn-exit').addEventListener('click', tapExit);
+  el('ask-yes').addEventListener('click', function () { askClose(true); });
+  el('ask-no').addEventListener('click', function () { askClose(false); });
+  el('ask-back').addEventListener('click', function () { askClose(false); });
+
+  /* Возврат кнопкой браузера и жестом «назад» на айфоне. Порядок важен:
+     сначала закрываем то, что лежит поверх экранов, и только потом
+     переключаем сами экраны. */
   window.addEventListener('popstate', function (e) {
     var s = e.state;
-    if (s && s.photo) { openPhoto(photoRow[s.photo] || { id: s.photo }, false); return; }
-    shownPhoto = null;
-    if (s && s.guest) openGuest(s.guest, false);
-    else if (el('s-guest').classList.contains('is-on')) backToFeed();
+
+    // ответ на наш собственный history.back() при закрытии шторки: она уже ушла
+    if (sheet.backPending) { sheet.backPending = false; return; }
+
+    if (sheet.open && !(s && s.sheet)) { sheet.pushed = false; sheetHide(); return; }
+    if (s && s.sheet) { openSheet(s.sheet, false); return; }
+
+    if (s && s.gfeed) { openGuestFeed(s.gfeed, s.photo, false); return; }
+
+    if (s && s.guest) {
+      // карточка уже собрана — возвращаемся на неё, не перечитывая заново
+      if (shownGuest === s.guest && el('s-gfeed').classList.contains('is-on')) backToGuest();
+      else openGuest(s.guest, false);
+      return;
+    }
+
+    if (el('s-guest').classList.contains('is-on')) backToFeed();
     else if (el('s-upload').classList.contains('is-on')) backToFeed();
-    else if (el('s-photo').classList.contains('is-on')) backToFeed();
+    else if (el('s-gfeed').classList.contains('is-on')) backToFeed();
   });
 
   refreshLogin();

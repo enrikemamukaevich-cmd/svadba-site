@@ -12,6 +12,11 @@
   --muted: #777;
   --radius: 4px;
   --pad: 20px;
+
+  /* Единственный цвет на всём сайте — закрашенное сердце и его же анимация
+     по двойному тапу. Больше нигде цвет не появляется: комментарии, жалобы,
+     счётчики и кнопки остаются чёрно-белыми. */
+  --like: #ED4956;
 }
 
 * { box-sizing: border-box; }
@@ -438,12 +443,18 @@ h1, h2 { font-weight: 500; margin: 0; }
 
 /* Пропорции снимка известны заранее — место под него держится с самого начала,
    поэтому лента не прыгает, пока фото грузится. */
+/* pan-y разрешает вертикальную прокрутку и заодно снимает с этого места
+   двойной тап браузера — иначе второе касание зумило бы страницу вместо лайка.
+   Выделение текста тоже гасим: длинное касание по фото ничего не выделяет. */
 .card-shot {
   position: relative;
   width: 100%;
   background: #ececec;
   overflow: hidden;
-  cursor: pointer;                 /* нажатие открывает страницу фото */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
 .card-shot img {
@@ -457,41 +468,95 @@ h1, h2 { font-weight: 500; margin: 0; }
 .card-shot.is-ready img { opacity: 1; }
 .card-shot.is-ready { background: var(--paper); }
 
+/* --- Большое сердце по двойному тапу ------------------------------------- */
+
+/* Лежит в карточке всегда и всегда невидимо: появись оно только на время
+   показа — карточка бы дёрнулась. Двигаются лишь transform и opacity,
+   размеры не меняются, поэтому на слабых телефонах не дёргается. */
+.pop {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 96px;
+  height: 96px;
+  margin: 0;
+  color: var(--like);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.2);
+  will-change: transform, opacity;
+}
+.pop svg { width: 100%; height: 100%; display: block; }
+.pop svg path { fill: currentColor; stroke: none; }
+
+.pop.is-pop { animation: popHeart 800ms ease-out forwards; }
+
+@keyframes popHeart {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  14%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }  /* лёгкий перелёт */
+  28%  { opacity: 1; transform: translate(-50%, -50%) scale(0.92); }
+  40%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  72%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.14); }
+}
+
 /* --- Строка действий под снимком ----------------------------------------- */
 
 .acts {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 8px 12px 2px;
+  flex-wrap: nowrap;               /* на 375 точках всё обязано уместиться в строку */
+  gap: 14px;
+  padding: 4px 10px;
 }
 
 .act {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 2px;
+  gap: 7px;
+  min-height: 44px;                /* палец должен попадать без прицеливания */
+  min-width: 44px;
+  padding: 0 4px;
   border: 0;
   background: none;
   font: inherit;
-  font-size: 13px;
+  font-size: 17px;
   color: var(--ink);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.act svg { width: 22px; height: 22px; display: block; }
-.act-n { font-variant-numeric: tabular-nums; min-width: 8px; }
+.act svg { width: 33px; height: 33px; display: block; }
+.act-n { font-variant-numeric: tabular-nums; min-width: 9px; }
 
-/* Закрашенное сердце — единственная заливка во всём оформлении:
-   без неё не отличить «уже нравится» от «ещё нет». */
+/* Закрашенное сердце — единственное цветное пятно на сайте */
+.act-like.is-on { color: var(--like); }
 .act-like.is-on svg path { fill: currentColor; }
+.act-like .act-n { color: var(--ink); }
 
-/* Жалоба — мелкий флажок в углу строки, а не равная соседям кнопка */
-.act-flag {
-  margin-left: auto;
-  color: var(--muted);
+/* Короткий подскок при постановке лайка. Тоже только transform. */
+.act-like.is-bump svg { animation: bumpHeart 320ms ease-out; }
+
+@keyframes bumpHeart {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.28); }
+  65%  { transform: scale(0.94); }
+  100% { transform: scale(1); }
 }
-.act-flag svg { width: 17px; height: 17px; }
+
+/* Жалоба — обычная текстовая кнопка справа, серым */
+.act-report {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 
 /* --- Последние комментарии прямо в ленте --------------------------------- */
 
@@ -519,17 +584,135 @@ h1, h2 { font-weight: 500; margin: 0; }
   -webkit-tap-highlight-color: transparent;
 }
 
-/* --- Страница фото ------------------------------------------------------- */
+/* ==========================================================================
+   ШТОРКА КОММЕНТАРИЕВ
+   Отдельного экрана комментариев нет: они выезжают снизу поверх ленты.
+   Двигается шторка только transform: translateY — ни top, ни height,
+   ни margin, иначе на слабых андроидах перетаскивание будет дёргаться.
+   ========================================================================== */
 
-.card-solo { border-bottom: 1px solid var(--line); }
-.card-solo .card-shot { cursor: default; }
+.sheet-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet-back {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .38);
+  opacity: 0;
+  transition: opacity 280ms ease;
+}
+.sheet-wrap.is-open .sheet-back { opacity: 1; }
+.sheet-wrap.is-dragging .sheet-back { transition: none; }
+
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  height: 85%;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform 280ms cubic-bezier(.22, .61, .36, 1);
+  will-change: transform;
+}
+.sheet-wrap.is-open .sheet { transform: translateY(0); }
+
+/* На время перетаскивания плавность снимается полностью: шторка обязана
+   идти за пальцем один в один, без задержки и без инерции. */
+.sheet-wrap.is-dragging .sheet { transition: none; }
+
+/* Ручка и шапка тянут шторку всегда, поэтому прокрутку здесь отключаем.
+   Выделение тоже: иначе медленное движение с зажатой кнопкой мыши браузер
+   принимает за выделение текста и перетаскивание. */
+.sheet-grab,
+.sheet-head {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sheet-grab {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 6px;
+  touch-action: none;
+  cursor: grab;
+}
+.sheet-bar {
+  display: block;
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.sheet-head {
+  flex: 0 0 auto;
+  padding: 2px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  touch-action: none;
+}
+.sheet-title {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: .1em;
+  text-indent: .1em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* Список прокручивается сам; шторку он отдаёт только когда прокручен
+   в самый верх — этим занимается app.js. overscroll-behavior не даёт
+   прокрутке протечь на ленту под шторкой. */
+.sheet-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* --- Комментарий --------------------------------------------------------- */
 
 .cm-list { padding: 4px 0 0; }
 
 .cm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
 }
+
+/* Заглушка или своя картинка — так же, как в карточке фото. Пустого места
+   тут быть не должно, поэтому у кружка всегда есть серая подложка. */
+.cm-face {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f0f0f0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cm-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.cm-main { flex: 1 1 auto; min-width: 0; }
 
 .cm-body {
   margin: 0;
@@ -537,7 +720,17 @@ h1, h2 { font-weight: 500; margin: 0; }
   line-height: 1.45;
   word-break: break-word;
 }
-.cm-nick { font-weight: 600; }
+
+.cm-nick {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 
 .cm-foot {
   display: flex;
@@ -564,7 +757,14 @@ h1, h2 { font-weight: 500; margin: 0; }
 
 /* --- Поле ввода комментария ---------------------------------------------- */
 
-.say { padding: 16px 16px 0; }
+/* Прижато к низу шторки. Над клавиатурой его поднимает app.js: он следит
+   за видимой частью экрана и подставляет отступ снизу. */
+.say {
+  flex: 0 0 auto;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
 
 .say-row { display: flex; align-items: baseline; gap: 12px; }
 
@@ -598,7 +798,57 @@ h1, h2 { font-weight: 500; margin: 0; }
 }
 .say-go[disabled] { color: var(--muted); cursor: default; }
 
-.say-left { margin-top: 8px; }
+.say-left { margin-top: 6px; }
+
+/* Пока шторка открыта, лента под ней стоит на месте и не оттягивается
+   вниз на айфоне. Смещение сохраняется в app.js и возвращается при закрытии. */
+body.is-locked {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* --- Окно подтверждения --------------------------------------------------- */
+
+.ask-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.ask-back {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .38);
+}
+
+.ask {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  padding: 22px 20px 18px;
+  background: var(--paper);
+  border-radius: 8px;
+}
+
+.ask-text {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.ask-row { display: flex; gap: 10px; }
+.ask-row .btn { margin-top: 0; }
+
+/* --- Выход из аккаунта ---------------------------------------------------- */
+
+/* Контурная и внизу: на своей карточке это не главное действие */
+.guest-exit { padding: 28px 16px 8px; }
 
 /* Серые прямоугольники на месте ещё не пришедших карточек */
 .card.is-skeleton .card-shot { aspect-ratio: 4 / 5; }
@@ -718,7 +968,6 @@ h1, h2 { font-weight: 500; margin: 0; }
 .guest-ava img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .guest-nick { margin: 14px 0 0; font-size: 20px; font-weight: 500; }
-.guest-since { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 
 .nums {
   display: grid;

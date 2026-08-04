@@ -5,11 +5,12 @@
   "description": "Свадебный фотосайт. Сам сайт — чистые HTML, CSS и JS без сборщиков и без зависимостей. Этот файл нужен только автопроверкам на Playwright и на сервер не уходит.",
   "type": "commonjs",
   "scripts": {
-    "test": "node tests/check-etap2.cjs && node tests/check-etap3.cjs && node tests/check-etap4.cjs && node tests/check-etap5.cjs",
+    "test": "node tests/check-etap2.cjs && node tests/check-etap3.cjs && node tests/check-etap4.cjs && node tests/check-etap5.cjs && node tests/check-interfeys.cjs",
     "test:2": "node tests/check-etap2.cjs",
     "test:3": "node tests/check-etap3.cjs",
     "test:4": "node tests/check-etap4.cjs",
     "test:5": "node tests/check-etap5.cjs",
+    "test:ui": "node tests/check-interfeys.cjs",
     "photos": "node tests/make-photos.cjs",
     "measure": "node tests/measure.cjs",
     "serve": "node tests/serve.cjs 8123"
