@@ -41,7 +41,7 @@ var CONFIG = {
      yadisk внутри Supabase; в коде сайта его нет и быть не может.
      Значение ниже — запасное. Ключ yadisk_enabled в таблице settings главнее:
      Диск отключается одной строкой в базе, посреди свадьбы и без выкладки. */
-  YADISK_ENABLED: false,
+  YADISK_ENABLED: true,
   YADISK_FN: '/functions/v1/yadisk',
   YADISK_TRIES: 3,                 // первая попытка и два повтора
   YADISK_TIMEOUT_MS: 180000,       // исходник до 25 МБ по слабому залу
