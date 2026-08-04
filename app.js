@@ -1632,6 +1632,7 @@ function askDelete(photoId, cell) {
   if (!me || !me.secret) { toast('Не получилось подтвердить, что снимок ваш'); return; }
 
   rpc('delete_photo', { p_secret: me.secret, p_photo_id: photoId }).then(function (res) {
+    if (sessionGone(res)) return;
     if (res && res.ok === true) {
       cell.remove();
       var n = parseInt(el('guest-photos').textContent, 10);
@@ -1921,6 +1922,7 @@ function tapLike(id) {
   if (!wasLiked) bumpHeart(id);
 
   rpc('toggle_like', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
+    if (sessionGone(res)) return;
     if (!res || res.ok !== true) throw new Error((res && res.error) || 'отказ');
     liked[id] = !!res.liked;
     s.likes = res.likes;
@@ -1972,12 +1974,27 @@ function tapReport(id) {
   if (!window.confirm('Пожаловаться на это фото?')) return;
 
   rpc('add_report', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
+    if (sessionGone(res)) return;
     if (!res || res.ok !== true) { toast('Жалоба не отправилась'); return; }
     toast(res.already ? 'Вы уже жаловались на это фото' : 'Жалоба отправлена');
     if (res.hidden) dropPhoto(id);
   }).catch(function () {
     toast('Жалоба не отправилась');
   });
+}
+
+/* Гостя больше нет: его забанили, пока страница была открыта.
+   Все программы базы отвечают на это одинаково — 'no_guest', потому что
+   guest_by_key не находит забаненного по ключу.
+
+   Раньше страница разбирала такой ответ как обычный сбой сети и предлагала
+   «попробуйте ещё раз» — гость жал снова и снова, и выходило, будто сломались
+   комментарии. Показываем то же, что показала бы перезагрузка: «Вход закрыт».
+   Возвращает true, если разговор окончен и звавшему делать больше нечего. */
+function sessionGone(res) {
+  if (!res || res.error !== 'no_guest') return false;
+  show('s-blocked');
+  return true;
 }
 
 // Снимок скрыт — убираем его с глаз, не перезагружая ленту
@@ -2382,6 +2399,7 @@ function askDeleteComment(photoId, commentId, node) {
   if (!me || !me.secret) { toast('Не получилось подтвердить, что комментарий ваш'); return; }
 
   rpc('delete_comment', { p_secret: me.secret, p_comment_id: commentId }).then(function (res) {
+    if (sessionGone(res)) return;
     if (!res || res.ok !== true) { toast('Не получилось удалить комментарий'); return; }
     node.remove();
     var s = statOf(photoId);
@@ -2422,6 +2440,7 @@ function saySend() {
   rpc('add_comment', { p_secret: me.secret, p_photo_id: id, p_body: body.trim() })
     .then(function (res) {
       busy(btn, false);
+      if (sessionGone(res)) return;
       if (!res || res.ok !== true) {
         var code = res && res.error;
         setErr('err-say',
