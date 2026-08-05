@@ -64,6 +64,13 @@ body {
   flex-direction: column;
 }
 
+/* На телефоне колонку не сужаем: у айфонов 14 Pro Max и 15 Plus ширина
+   430 точек, и потолок в 420 оставлял по бокам ленты белые полоски по пять
+   точек. На большом экране колонка по-прежнему ограничена — там она нужна. */
+@media (max-width: 460px) {
+  #app { max-width: none; }
+}
+
 .screen { display: none; flex-direction: column; flex: 1; }
 .screen.is-on { display: flex; }
 
