@@ -57,10 +57,16 @@
   text-indent: .16em;
 }
 
+/* Единственная кнопка панели, в которую было не попасть: 31 точка высотой
+   при норме в 44. Растёт только область нажатия, надпись остаётся прежней —
+   иначе шапка раздувается и съедает начало списка жалоб. */
 .p-refresh {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   border: 0;
   background: none;
-  padding: 6px 0 6px 12px;
+  padding: 0 0 0 16px;
   font: inherit;
   font-size: 13px;
   color: var(--muted);
