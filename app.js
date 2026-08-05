@@ -1660,7 +1660,11 @@ function cellNode(row, mine) {
    этого не годится. Программы delete_photo в базе пока нет — она появится
    вместе с загрузкой, поэтому кнопка честно говорит, что не сработала. */
 function askDelete(photoId, cell) {
-  if (!window.confirm('Удалить этот снимок? Вернуть его будет нельзя.')) return;
+  ask('Удалить этот снимок? Вернуть его будет нельзя.', 'Удалить',
+      function () { doDeletePhoto(photoId, cell); });
+}
+
+function doDeletePhoto(photoId, cell) {
   if (!me || !me.secret) { toast('Не получилось подтвердить, что снимок ваш'); return; }
 
   rpc('delete_photo', { p_secret: me.secret, p_photo_id: photoId }).then(function (res) {
@@ -2000,10 +2004,25 @@ function bumpHeart(id) {
    он ждёт разбора в панели владельца. Автору ничего не показываем.
    -------------------------------------------------------------------------- */
 
+/* Спрашиваем своим окном, а не window.confirm.
+
+   Встроенное окно браузер имеет право не показать вовсе. В Safari достаточно
+   один раз отметить «не показывать больше окна с этого сайта» — и confirm
+   начинает молча возвращать «нет» навсегда. Кнопка после этого выглядит
+   мёртвой: ни запроса в базу, ни надписи, ни следа в консоли. Проверено:
+   в этом случае add_report не вызывается ни разу.
+
+   Механику трёх жалоб и скрытия снимка правка не трогает — меняется только
+   то, чем спрашивают согласие. */
 function tapReport(id) {
   if (siteState() === 'closed') { applyState(); return; }
   if (!me || !me.secret) { toast('Не получилось подтвердить, кто вы'); return; }
-  if (!window.confirm('Пожаловаться на это фото?')) return;
+  ask('Пожаловаться на это фото? Владелец увидит жалобу и решит сам.',
+      'Пожаловаться', function () { sendReport(id); });
+}
+
+function sendReport(id) {
+  if (!me || !me.secret) { toast('Не получилось подтвердить, кто вы'); return; }
 
   rpc('add_report', { p_secret: me.secret, p_photo_id: id }).then(function (res) {
     if (sessionGone(res)) return;
@@ -2427,7 +2446,11 @@ function sheetToGuest(guestId) {
 }
 
 function askDeleteComment(photoId, commentId, node) {
-  if (!window.confirm('Удалить свой комментарий?')) return;
+  ask('Удалить свой комментарий?', 'Удалить',
+      function () { doDeleteComment(photoId, commentId, node); });
+}
+
+function doDeleteComment(photoId, commentId, node) {
   if (!me || !me.secret) { toast('Не получилось подтвердить, что комментарий ваш'); return; }
 
   rpc('delete_comment', { p_secret: me.secret, p_comment_id: commentId }).then(function (res) {
@@ -2960,7 +2983,28 @@ function restoreSession() {
    Сборка
    -------------------------------------------------------------------------- */
 
+/* Страница не масштабируется ни щипком, ни двойным тапом.
+
+   Основную работу делает touch-action в оформлении, но на айфоне у щипка
+   есть свои события gesture*, и touch-action их не всегда останавливает.
+   Метатег user-scalable=no Safari игнорирует нарочно, поэтому надёжный
+   способ остался один — погасить сами события.
+
+   Зачем это вообще: двойной тап по фотографии обязан ставить лайк,
+   а не приближать вёрстку, и обычный тап по кнопке не должен теряться,
+   пока браузер решает, не начало ли это двойного тапа.
+
+   Гасить сами касания руками нельзя: отменённый touchend уносит с собой
+   click, и второе быстрое нажатие по кнопке просто пропало бы. */
+function killZoom() {
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+    document.addEventListener(name, function (e) { e.preventDefault(); }, { passive: false });
+  });
+}
+
 function init() {
+  killZoom();
+
   all('[data-goto]').forEach(function (b) {
     b.addEventListener('click', function () { clearErrs(); show(b.dataset.goto); });
   });

@@ -539,7 +539,18 @@ function keyFromHash() {
   return v || null;
 }
 
+/* То же, что и на гостевой части: страница не масштабируется щипком.
+   Двойной тап останавливает touch-action в общем styles.css. Пультом
+   пользуются стоя и одной рукой — случайное увеличение здесь дороже всего. */
+function killZoom() {
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+    document.addEventListener(name, function (e) { e.preventDefault(); }, { passive: false });
+  });
+}
+
 function boot() {
+  killZoom();
+
   el('ask-no').addEventListener('click', askClose);
   el('ask-back').addEventListener('click', askClose);
   el('ask-yes').addEventListener('click', function () {

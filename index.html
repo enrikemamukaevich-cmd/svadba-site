@@ -2,7 +2,10 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- viewport-fit=cover пускает фон под чёлку и под полосу жеста, отступы под них
+     стоят в styles.css. Запрет масштабирования здесь понимает Android; Safari
+     его нарочно игнорирует, там работают touch-action и гашение жестов в app.js. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <meta name="format-detection" content="telephone=no">
 <title>СВАДЬБА · ripsigal &amp; jimbei5</title>
